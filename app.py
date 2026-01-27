@@ -5,8 +5,8 @@ from bs4 import BeautifulSoup
 from io import StringIO
 import re
 
-st.set_page_config(page_title="국내 증시 TOP 100 통합 분석", layout="wide")
-st.title("📊 국내 증시 시가총액 TOP 100 (상세 지표 통합)")
+#st.set_page_config(page_title="국내 증시 TOP 100 통합 분석", layout="wide")
+#st.title("📊 국내 증시 시가총액 TOP 100 (상세 지표 통합)")
 
 def get_market_data(sosok, page):
     # 요청할 모든 지표 필드 ID를 파라미터에 추가

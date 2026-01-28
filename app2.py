@@ -5,9 +5,6 @@ from bs4 import BeautifulSoup
 from io import StringIO
 import re
 
-# 페이지 설정
-st.set_page_config(page_title="국내 증시 TOP 100 분석", layout="wide")
-st.title("📊 국내 증시 시가총액 TOP 100 (상세 분석)")
 
 def get_market_data(sosok, page):
     # 필요한 지표 설정

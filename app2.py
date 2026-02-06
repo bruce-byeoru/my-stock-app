@@ -112,7 +112,7 @@ if kospi or kosdaq:
         # 스타일 정의 함수
         def apply_stock_color(column):
             return [
-                'color: red' if color_ref.iloc[i] > 0 else 'color: blue' if color_ref.iloc[i] < 0 else ''
+                'color: red' if color_ref.iloc[i] > 0 else 'color: #4DA6FF' if color_ref.iloc[i] < 0 else ''
                 for i in range(len(column))
             ]
 

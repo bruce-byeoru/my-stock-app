@@ -87,132 +87,58 @@ load_dotenv()
 
 # 뉴스 크롤링 함수
 def get_company_news(company_name, max_news=10):
-    """Google News RSS 및 Naver 뉴스에서 회사 관련 뉴스 가져오기 (제목, URL, 날짜)"""
+    """Naver 뉴스 검색에서 회사 관련 뉴스 가져오기 (제목, URL, 날짜)"""
     all_news = []
     
     try:
-        # 1) Google News RSS 사용
-        if feedparser:
-            try:
-                query = company_name.replace(' ', '%20')
-                url = f"https://news.google.com/rss/search?q={query}&hl=ko&gl=KR&ceid=KR:ko"
-                
-                feed = feedparser.parse(url)
-                
-                for entry in feed.entries[:30]:
-                    try:
-                        title = entry.get('title', '')
-                        link = entry.get('link', '#')
-                        published = entry.get('published', '')
-                        
-                        # 날짜 파싱
-                        try:
-                            if hasattr(entry, 'published_parsed') and entry.published_parsed:
-                                from time import strftime
-                                pub_date = strftime('%Y-%m-%d', entry.published_parsed)
-                            elif 'T' in str(published):
-                                pub_date = str(published).split('T')[0]
-                            else:
-                                pub_date = datetime.now().strftime('%Y-%m-%d')
-                        except:
-                            pub_date = datetime.now().strftime('%Y-%m-%d')
-                        
-                        # HTML 태그 제거
-                        title = re.sub(r'<[^>]+>', '', title).strip()
-                        
-                        if title and len(title) > 5 and not any(n['title'] == title for n in all_news):
-                            all_news.append({
-                                'title': title,
-                                'url': link,
-                                'date': pub_date
-                            })
-                            
-                            if len(all_news) >= max_news:
-                                break
-                    except:
-                        continue
-            except:
-                pass
+        import urllib.parse
+        query = urllib.parse.quote(company_name)
+        # 최근 1주일간 뉴스, 최신순 정렬
+        url = f"https://search.naver.com/search.naver?where=news&query={query}&sm=tab_opt&sort=1&photo=0&field=0&pd=7"
         
-        # 2) Naver 뉴스 크롤링 (부족할 경우 또는 Google 실패 시)
-        if len(all_news) < max_news:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
+        
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # 모든 링크에서 뉴스 기사로 보이는 것들 필터링
+        all_links = soup.find_all('a', href=True)
+        
+        for link in all_links:
+            if len(all_news) >= max_news:
+                break
+            
             try:
-                query = company_name
-                url = f"https://search.naver.com/search.naver?where=news&query={query}&sort=1&photo=0&field=0&pd=7&ds=&de=&docid=&related=0&mynews=0&office_type=0&office_section_code=0&news_office_checked=&nso=so%3Ar%2Cp%3A1w&is_sug_officeid=0"
+                text = link.get_text(strip=True)
+                href = link.get('href', '')
                 
-                headers = {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-                }
-                
-                response = requests.get(url, headers=headers, timeout=10)
-                response.encoding = 'utf-8'
-                soup = BeautifulSoup(response.text, 'html.parser')
-                
-                # 다양한 선택자 시도
-                news_items = soup.select('div.news_area') or soup.select('li.bx') or soup.select('div.group_news')
-                
-                for item in news_items[:30]:
-                    if len(all_news) >= max_news:
-                        break
+                # 뉴스 기사 링크 조건:
+                # 1) href가 http로 시작
+                # 2) 텍스트 길이가 10자 이상
+                # 3) static, promotion 등의 광고 링크 제외
+                if (href.startswith('http') and 
+                    len(text) > 10 and 
+                    'static' not in href.lower() and
+                    'promotion' not in href.lower() and
+                    'javascript' not in href.lower()):
                     
-                    try:
-                        # 제목과 링크
-                        title_tag = item.select_one('a.news_tit') or item.select_one('a.tit') or item.find('a', class_=re.compile('news|tit|title'))
-                        if not title_tag:
-                            continue
-                        
-                        title = title_tag.get('title', title_tag.get_text(strip=True))
-                        link = title_tag.get('href', '#')
-                        
-                        # 날짜
-                        date_tag = item.select_one('span.info') or item.find('span', class_=re.compile('date|time|info'))
-                        date = date_tag.get_text(strip=True) if date_tag else datetime.now().strftime('%Y-%m-%d')
-                        
-                        title = title.strip()
-                        if title and len(title) > 5 and not any(n['title'] == title for n in all_news):
-                            all_news.append({
-                                'title': title,
-                                'url': link,
-                                'date': date
-                            })
-                    except:
-                        continue
+                    # 중복 체크
+                    if not any(n['title'] == text for n in all_news):
+                        all_news.append({
+                            'title': text,
+                            'url': href,
+                            'date': datetime.now().strftime('%Y-%m-%d')
+                        })
             except:
-                pass
-        
-        # 3) 여전히 부족하면 검색어를 넓힘 (회사명의 일부만 사용)
-        if len(all_news) < max_news and len(company_name) > 3:
-            try:
-                # 회사명 앞 2-3자만 사용해서 재검색
-                short_query = company_name[:3] if len(company_name) > 4 else company_name[:2]
-                url = f"https://news.google.com/rss/search?q={short_query}+주식&hl=ko&gl=KR&ceid=KR:ko"
-                
-                if feedparser:
-                    feed = feedparser.parse(url)
-                    for entry in feed.entries[:20]:
-                        if len(all_news) >= max_news:
-                            break
-                        try:
-                            title = re.sub(r'<[^>]+>', '', entry.get('title', '')).strip()
-                            link = entry.get('link', '#')
-                            
-                            if title and len(title) > 5 and company_name[:2] in title and not any(n['title'] == title for n in all_news):
-                                all_news.append({
-                                    'title': title,
-                                    'url': link,
-                                    'date': datetime.now().strftime('%Y-%m-%d')
-                                })
-                        except:
-                            continue
-            except:
-                pass
-        
-        # 결과 반환
-        return all_news if all_news else []
-        
-    except Exception as e:
-        # 최종 에러 발생 시에도 수집된 것이라도 반환
-        return all_news if all_news else []
+                continue
+    
+    except Exception:
+        pass
+    
+    return all_news[:max_news] if all_news else []
 
 # 뉴스 기반 감정 분석 함수
 def analyze_news_sentiment(news_list, company_name):
@@ -890,9 +816,20 @@ market_selected = st.session_state.get("market_type", None)
 
 if market_selected:
     m_code = "0" if market_selected == "kospi" else "1"
-    with st.spinner("최신 데이터를 불러오고 있습니다..."):
-        # 1, 2페이지 합쳐서 TOP 100 생성
-        df_raw = pd.concat([get_market_data(m_code, 1), get_market_data(m_code, 2)], ignore_index=True).head(100)
+    
+    # 데이터를 session_state에 캠시하여 한 번만 로드
+    cache_key = f"market_data_{market_selected}"
+    
+    if cache_key not in st.session_state:
+        with st.spinner("최신 데이터를 불러오고 있습니다..."):
+            # 1, 2페이지 합쳐서 TOP 100 생성
+            df_raw = pd.concat([get_market_data(m_code, 1), get_market_data(m_code, 2)], ignore_index=True).head(100)
+            st.session_state[cache_key] = df_raw
+    else:
+        df_raw = st.session_state[cache_key]
+    
+    # 데이터 처리 계속
+    if True:  # 들여쓰기 유지를 위한 블록
 
         # 컬럼명 정리
         rename_map = {

@@ -87,67 +87,62 @@ load_dotenv()
 
 # 뉴스 크롤링 함수
 def get_company_news(company_name, max_news=10):
-    """Naver 뉴스 검색에서 회사 관련 뉴스 가져오기 (제목, URL, 날짜)"""
+    """Naver 뉴스 검색에서 회사 관련 뉴스의 제목과 링크만 가져옴.
+
+    - 기사 본문이나 요약이 아닌 제목(anchor text)만 사용
+    - 제목에 `company_name`이 포함된 항목만 반환
+    - 반환 항목: {'title': ..., 'url': ...}
+    """
     all_news = []
-    
+
     try:
         import urllib.parse
         query = urllib.parse.quote(company_name)
-        # 최근 1주일간 뉴스, 최신순 정렬
-        url = f"https://search.naver.com/search.naver?where=news&query={query}&sm=tab_opt&sort=1&photo=0&field=0&pd=7"
-        
+        url = f"https://search.naver.com/search.naver?where=news&query={query}&sm=tab_opt&sort=1&pd=7"
+
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         }
-        
-        response = requests.get(url, headers=headers, timeout=10)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.text, 'html.parser')
-        
-        # 모든 링크에서 뉴스 기사로 보이는 것들 필터링
-        all_links = soup.find_all('a', href=True)
-        
-        # 회사명 추출 (앞 2-4자 또는 주요 키워드)
-        company_keywords = [company_name]
-        if len(company_name) > 4:
-            company_keywords.append(company_name[:4])
-        if len(company_name) > 3:
-            company_keywords.append(company_name[:3])
-        
-        for link in all_links:
-            if len(all_news) >= max_news * 2:  # 여유있게 수집 후 필터링
+
+        resp = requests.get(url, headers=headers, timeout=10)
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, 'html.parser')
+
+        # 모든 앵커를 검사하되, 회사명(정확 표기)이 제목 텍스트에 포함된 경우만 수집
+        anchors = soup.find_all('a', href=True)
+
+        for a in anchors:
+            if len(all_news) >= max_news:
                 break
-            
+
             try:
-                text = link.get_text(strip=True)
-                href = link.get('href', '')
-                
-                # 뉴스 기사 제목 조건:
-                # 1) href가 http로 시작
-                # 2) 텍스트 길이 15~80자 (제목만, 본문 제외)
-                # 3) 회사명이 제목에 포함
-                # 4) static, promotion 등의 광고 링크 제외
-                if (href.startswith('http') and 
-                    15 <= len(text) <= 80 and
-                    any(keyword in text for keyword in company_keywords) and
-                    'static' not in href.lower() and
-                    'promotion' not in href.lower() and
-                    'javascript' not in href.lower()):
-                    
-                    # 중복 체크
-                    if not any(n['title'] == text for n in all_news):
-                        all_news.append({
-                            'title': text,
-                            'url': href,
-                            'date': datetime.now().strftime('%Y-%m-%d')
-                        })
-            except:
+                text = a.get_text(strip=True)
+                href = a.get('href', '')
+
+                if not href or not href.startswith('http'):
+                    continue
+
+                # 회사명 정확 매칭 (부분 단어 매칭으로 인한 오탐 방지)
+                if company_name not in text:
+                    continue
+
+                # 제목 길이 제한
+                if len(text) < 6 or len(text) > 80:
+                    continue
+
+                if any(n['title'] == text for n in all_news):
+                    continue
+
+                all_news.append({'title': text, 'url': href})
+
+            except Exception:
                 continue
-    
+
     except Exception:
-        pass
-    
-    return all_news[:max_news] if all_news else []
+        # 전체 실패 시 빈 리스트 반환
+        return []
+
+    return all_news[:max_news]
 
 # 뉴스 기반 감정 분석 함수
 def analyze_news_sentiment(news_list, company_name):

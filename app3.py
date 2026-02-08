@@ -87,12 +87,7 @@ load_dotenv()
 
 # 뉴스 크롤링 함수
 def get_company_news(company_name, max_news=10):
-    """Naver 뉴스 검색에서 회사 관련 뉴스의 제목과 링크만 가져옴.
-
-    - 기사 본문이나 요약이 아닌 제목(anchor text)만 사용
-    - 제목에 `company_name`이 포함된 항목만 반환
-    - 반환 항목: {'title': ..., 'url': ...}
-    """
+    """Naver 뉴스 검색에서 회사 관련 뉴스의 제목과 링크만 가져옴."""
     all_news = []
 
     try:
@@ -108,28 +103,36 @@ def get_company_news(company_name, max_news=10):
         resp.raise_for_status()
         soup = BeautifulSoup(resp.text, 'html.parser')
 
-        # 모든 앵커를 검사하되, 회사명(정확 표기)이 제목 텍스트에 포함된 경우만 수집
-        anchors = soup.find_all('a', href=True)
-
-        for a in anchors:
+        # 제목 앵커만 선택: 클래스에 'Lt1P2_'가 포함된 앵커
+        # (본문 요약은 'l144O'로 시작하므로 자동 제외됨)
+        all_anchors = soup.find_all('a', href=True)
+        
+        for a in all_anchors:
             if len(all_news) >= max_news:
                 break
 
             try:
+                # 클래스 체크
+                classes = a.get('class', [])
+                is_title = any('Lt1P2_' in c for c in classes)
+                if not is_title:
+                    continue
+                
                 text = a.get_text(strip=True)
                 href = a.get('href', '')
 
                 if not href or not href.startswith('http'):
                     continue
 
-                # 회사명 정확 매칭 (부분 단어 매칭으로 인한 오탐 방지)
+                # 회사명 정확 매칭
                 if company_name not in text:
                     continue
 
-                # 제목 길이 제한
-                if len(text) < 6 or len(text) > 80:
+                # 제목 길이 제한 (광고 및 이상 텍스트 제외)
+                if len(text) < 10 or len(text) > 60:
                     continue
 
+                # 중복 체크
                 if any(n['title'] == text for n in all_news):
                     continue
 
@@ -139,7 +142,6 @@ def get_company_news(company_name, max_news=10):
                 continue
 
     except Exception:
-        # 전체 실패 시 빈 리스트 반환
         return []
 
     return all_news[:max_news]

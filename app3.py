@@ -88,7 +88,7 @@ load_dotenv()
 # 뉴스 크롤링 함수
 def get_company_news(company_name, max_news=15):
     """Naver 뉴스 검색에서 회사 관련 뉴스의 제목과 링크만 가져옴."""
-    all_news = []
+    all_news = []  # 제목에 회사명이 포함된 뉴스만
     
     # 경조사, 광고, 무관한 키워드 (주가와 관련 없는 내용)
     exclude_keywords = [
@@ -112,77 +112,89 @@ def get_company_news(company_name, max_news=15):
         url = f"https://search.naver.com/search.naver?where=news&query={query}&sm=tab_opt&sort=1&pd=7"
 
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7'
         }
 
         resp = requests.get(url, headers=headers, timeout=10)
         resp.raise_for_status()
         soup = BeautifulSoup(resp.text, 'html.parser')
 
-        # 제목 앵커만 선택: 클래스에 'Lt1P2_'가 포함된 앵커
-        all_anchors = soup.find_all('a', href=True)
+        # 회사명 변형 리스트 (유연한 매칭)
+        company_variations = [company_name]
+        if '전자' in company_name and len(company_name) > 4:
+            company_variations.append(company_name.replace('전자', ''))
+        if '자동차' in company_name:
+            company_variations.append(company_name.replace('자동차', '차'))
         
-        for a in all_anchors:
-            if len(all_news) >= max_news * 2:  # 더 많이 수집한 후 필터링
+        # 모든 링크를 순회하면서 뉴스 기사로 보이는 것만 수집
+        all_links = soup.find_all('a', href=True)
+        
+        for link in all_links:
+            if len(all_news) >= max_news:
                 break
 
             try:
-                # 클래스 체크
-                classes = a.get('class', [])
-                is_title = any('Lt1P2_' in c for c in classes)
-                if not is_title:
+                title = link.get_text(strip=True)
+                href = link.get('href', '')
+                
+                # 1. 기본 필터: 최소 길이, http 시작
+                if len(title) < 15 or len(title) > 100:
+                    continue
+                    
+                if not (href.startswith('http://') or href.startswith('https://')):
                     continue
                 
-                text = a.get_text(strip=True)
-                href = a.get('href', '')
-
-                if not href or not href.startswith('http'):
-                    continue
-
-                # 네이버 스토어, 쇼핑몰, 헬프 링크 제외
-                if any(x in href for x in ['shopping', 'smartstore', 'store.naver', 'help.naver', 'news.naver.com/main']):
-                    continue
-
-                # 제목 길이 제한
-                if len(text) < 15 or len(text) > 80:
-                    continue
-
-                # 경조사/광고/무관 키워드 제외
-                if any(kw in text for kw in exclude_keywords):
+                # 2. 네이버 쇼핑/스토어/광고 제외
+                if any(x in href for x in ['shopping.naver', 'smartstore.naver', 'ad.naver', 
+                                           'help.naver', 'news.naver.com/main', 'promotion']):
                     continue
                 
-                # **필수**: 회사명이 제목에 반드시 포함되어야 함
-                # 일부 축약형도 허용 (예: 삼성전자 -> 삼성, 현대자동차 -> 현대차)
-                company_variations = [company_name]
-                if '전자' in company_name and len(company_name) > 4:
-                    company_variations.append(company_name.replace('전자', ''))
-                if '자동차' in company_name:
-                    company_variations.append(company_name.replace('자동차', '차'))
+                # 3. 뉴스 사이트 확인 (외부 뉴스 사이트 링크 포함)
+                is_news_site = any(x in href for x in [
+                    'n.news.naver.com',    # 네이버 뉴스
+                    '.co.kr/',              # 한국 언론사
+                    'chosun.com', 'joongang.co.kr', 'donga.com', 'hankyung.com',
+                    'mk.co.kr', 'etnews.com', 'newsis.com', 'yonhapnews.co.kr',
+                    'mt.co.kr', 'sedaily.com', 'news1.kr', 'yna.co.kr',
+                    'etoday.co.kr', 'dt.co.kr', 'womaneconomy.co.kr'
+                ])
                 
-                has_company_name = any(var in text for var in company_variations)
+                if not is_news_site:
+                    continue
+                
+                # 4. 경조사/광고 키워드 제외
+                if any(kw in title for kw in exclude_keywords):
+                    continue
+                
+                # 5. 일반 경제 뉴스 제외
+                if any(kw in title for kw in generic_keywords):
+                    continue
+                
+                # 6. **필수**: 회사명이 제목에 반드시 포함되어야 함
+                has_company_name = any(var in title for var in company_variations)
                 if not has_company_name:
                     continue
                 
-                # 일반 경제 뉴스 제외
-                if any(kw in text for kw in generic_keywords):
+                # 7. 중복 체크
+                if any(n['title'] == title for n in all_news):
                     continue
-
-                # 중복 체크
-                if any(n['title'] == text for n in all_news):
-                    continue
-
-                all_news.append({'title': text, 'url': href})
+                
+                # 8. 성공적으로 수집
+                all_news.append({'title': title, 'url': href})
 
             except Exception:
                 continue
 
-    except Exception:
+    except Exception as e:
+        print(f"뉴스 크롤링 오류: {e}")
         return []
 
-    return all_news[:max_news]
+    # 우선순위 뉴스만 반환 (제목에 회사명이 포함된 것만)
+    return priority_news[:max_news]
 
-# 뉴스 기반 감정 분석 함수
-def analyze_news_sentiment(news_list, company_name):
+# 뉴스 기제목에 회사명이 포함된 뉴스만 반환
+    return allntiment(news_list, company_name):
     """뉴스 제목 기반으로 구체적인 긍정/부정 요소 분석 및 DataFrame 반환"""
     positive_keywords = [
         '상승', '증가', '호황', '호전', '강세', '반등', '부양', '부족', '수급',
@@ -975,9 +987,13 @@ def get_ohlcv_and_analysis(code, company_name, current_price, market="KOSPI"):
                                 'bearish' if close_price < ma20_last < ma60_last else 'neutral'
             }
             
-            # 뉴스 감성 분석
-            pos_count = len(df_news[df_news['분류'] == '긍정'])
-            neg_count = len(df_news[df_news['분류'] == '부정'])
+            # 뉴스 감성 분석 (안전하게 처리)
+            pos_count = 0
+            neg_count = 0
+            if not df_news.empty and '분류' in df_news.columns:
+                pos_count = len(df_news[df_news['분류'] == '긍정'])
+                neg_count = len(df_news[df_news['분류'] == '부정'])
+            
             news_sentiment = {
                 'positive': pos_count,
                 'negative': neg_count
@@ -1286,7 +1302,7 @@ if market_selected:
                     # 뉴스 테이블 표시 (카테고리별)
                     st.markdown("### 📰 시장 뉴스")
                     
-                    if not df_news.empty:
+                    if not df_news.empty and '분류' in df_news.columns:
                         # 분류별로 분리
                         positive_news = df_news[df_news['분류'] == '긍정']
                         negative_news = df_news[df_news['분류'] == '부정']

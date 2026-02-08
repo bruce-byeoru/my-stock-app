@@ -151,8 +151,20 @@ def get_company_news(company_name, max_news=15):
                 if any(kw in text for kw in exclude_keywords):
                     continue
                 
-                # 일반 경제 뉴스 제외 (회사명이 제목에 있는 경우는 제외하지 않음)
-                if company_name not in text and any(kw in text for kw in generic_keywords):
+                # **필수**: 회사명이 제목에 반드시 포함되어야 함
+                # 일부 축약형도 허용 (예: 삼성전자 -> 삼성, 현대자동차 -> 현대차)
+                company_variations = [company_name]
+                if '전자' in company_name and len(company_name) > 4:
+                    company_variations.append(company_name.replace('전자', ''))
+                if '자동차' in company_name:
+                    company_variations.append(company_name.replace('자동차', '차'))
+                
+                has_company_name = any(var in text for var in company_variations)
+                if not has_company_name:
+                    continue
+                
+                # 일반 경제 뉴스 제외
+                if any(kw in text for kw in generic_keywords):
                     continue
 
                 # 중복 체크
@@ -275,8 +287,261 @@ def generate_news_analysis_text(df_news):
     
     return news_eval
 
+# 재무지표 가져오기 함수
+def get_fundamental_data(code, market="KOSPI"):
+    """pykrx로 재무지표 가져오기 (PER, PBR, ROE, 배당율 등)"""
+    try:
+        if stock is None:
+            return None
+        
+        # 최근 영업일의 재무지표 가져오기 (최대 10일 전까지 시도)
+        for i in range(1, 11):
+            date = (datetime.now() - timedelta(days=i)).strftime('%Y%m%d')
+            try:
+                df = stock.get_market_fundamental_by_ticker(date, market=market)
+                if code in df.index and df.loc[code, 'PER'] > 0:
+                    data = df.loc[code]
+                    # ROE 계산 (EPS / BPS * 100)
+                    roe = (data['EPS'] / data['BPS'] * 100) if data['BPS'] > 0 else 0
+                    return {
+                        'PER': data['PER'],
+                        'PBR': data['PBR'],
+                        'ROE': round(roe, 2),
+                        'EPS': data['EPS'],
+                        'BPS': data['BPS'],
+                        'DIV': data['DIV'],  # 배당수익률 (%)
+                        'DPS': data['DPS'],  # 주당배당금
+                        'date': date
+                    }
+            except:
+                continue
+        
+        return None
+    except Exception as e:
+        return None
+
+# 투자가치 분석 및 점수 계산 함수
+def analyze_investment_value(fundamental, technical_signals, news_sentiment, current_price):
+    """재무지표, 기술적 신호, 뉴스 감성을 종합해서 투자가치 분석 및 점수 계산"""
+    
+    scores = {
+        'technical': 0,      # 기술적 분석 (30점)
+        'news': 0,           # 뉴스 감성 (20점)
+        'fundamental': 0,    # 재무지표 (30점)
+        'valuation': 0       # 가치평가 (20점)
+    }
+    
+    analysis_text = "## 📊 투자가치 종합 분석\n\n"
+    
+    # 1. 기술적 분석 점수 (30점)
+    tech_score = 0
+    if technical_signals:
+        # RSI 점수 (10점)
+        rsi = technical_signals.get('rsi', 50)
+        if 30 <= rsi <= 70:
+            tech_score += 10  # 적정 구간
+        elif 20 <= rsi < 30 or 70 < rsi <= 80:
+            tech_score += 7   # 과매도/과매수 진입
+        else:
+            tech_score += 3   # 극단적 과매도/과매수
+        
+        # MACD 점수 (10점)
+        macd_signal = technical_signals.get('macd_signal', 'neutral')
+        if macd_signal == 'bullish':
+            tech_score += 10
+        elif macd_signal == 'neutral':
+            tech_score += 5
+        else:
+            tech_score += 0
+        
+        # 이평선 배열 점수 (10점)
+        ma_alignment = technical_signals.get('ma_alignment', 'mixed')
+        if ma_alignment == 'bullish':
+            tech_score += 10
+        elif ma_alignment == 'neutral':
+            tech_score += 5
+        else:
+            tech_score += 0
+    
+    scores['technical'] = tech_score
+    
+    # 2. 뉴스 감성 점수 (20점)
+    news_score = 0
+    if news_sentiment:
+        pos = news_sentiment.get('positive', 0)
+        neg = news_sentiment.get('negative', 0)
+        total = pos + neg
+        
+        if total > 0:
+            pos_ratio = pos / total
+            if pos_ratio >= 0.7:
+                news_score = 20
+            elif pos_ratio >= 0.5:
+                news_score = 15
+            elif pos_ratio >= 0.3:
+                news_score = 10
+            else:
+                news_score = 5
+        else:
+            news_score = 10  # 뉴스 없으면 중립
+    else:
+        news_score = 10
+    
+    scores['news'] = news_score
+    
+    # 3. 재무지표 점수 (30점)
+    fund_score = 0
+    if fundamental:
+        # PER 점수 (10점) - 낮을수록 좋음
+        per = fundamental.get('PER', 999)
+        if per > 0:
+            if per < 10:
+                fund_score += 10
+            elif per < 15:
+                fund_score += 8
+            elif per < 20:
+                fund_score += 6
+            elif per < 30:
+                fund_score += 4
+            else:
+                fund_score += 2
+        
+        # ROE 점수 (10점) - 높을수록 좋음
+        roe = fundamental.get('ROE', 0)
+        if roe >= 20:
+            fund_score += 10
+        elif roe >= 15:
+            fund_score += 8
+        elif roe >= 10:
+            fund_score += 6
+        elif roe >= 5:
+            fund_score += 4
+        else:
+            fund_score += 2
+        
+        # 배당수익률 점수 (10점)
+        div = fundamental.get('DIV', 0)
+        if div >= 4:
+            fund_score += 10
+        elif div >= 3:
+            fund_score += 8
+        elif div >= 2:
+            fund_score += 6
+        elif div >= 1:
+            fund_score += 4
+        else:
+            fund_score += 2
+    
+    scores['fundamental'] = fund_score
+    
+    # 4. 가치평가 점수 (20점)
+    val_score = 0
+    if fundamental:
+        # PBR 기준 저평가 분석 (10점)
+        pbr = fundamental.get('PBR', 999)
+        if pbr > 0:
+            if pbr < 0.8:
+                val_score += 10  # 매우 저평가
+            elif pbr < 1.0:
+                val_score += 8   # 저평가
+            elif pbr < 1.5:
+                val_score += 6   # 적정
+            elif pbr < 2.0:
+                val_score += 4   # 약간 고평가
+            else:
+                val_score += 2   # 고평가
+        
+        # BPS 대비 현재가 (10점)
+        bps = fundamental.get('BPS', 0)
+        if bps > 0 and current_price > 0:
+            price_to_bps = current_price / bps
+            if price_to_bps < 0.8:
+                val_score += 10
+            elif price_to_bps < 1.0:
+                val_score += 8
+            elif price_to_bps < 1.5:
+                val_score += 6
+            elif price_to_bps < 2.0:
+                val_score += 4
+            else:
+                val_score += 2
+    
+    scores['valuation'] = val_score
+    
+    # 총점 계산
+    total_score = sum(scores.values())
+    
+    # 투자 의견
+    if total_score >= 80:
+        recommendation = "🟢 **매수 적극 권장** (Strong Buy)"
+        invest_opinion = "기술적/재무적/감성적 지표가 모두 우수하여 적극 매수를 권장합니다."
+    elif total_score >= 65:
+        recommendation = "🟢 **매수** (Buy)"
+        invest_opinion = "전반적으로 긍정적인 신호가 많아 매수를 고려할 만합니다."
+    elif total_score >= 50:
+        recommendation = "🟡 **보유** (Hold)"
+        invest_opinion = "긍정/부정 신호가 혼재되어 있어 기존 보유자는 유지, 신규 매수는 신중 검토가 필요합니다."
+    elif total_score >= 35:
+        recommendation = "🟠 **관망** (Wait)"
+        invest_opinion = "부정적 신호가 많아 추가 하락 가능성이 있습니다. 관망이 바람직합니다."
+    else:
+        recommendation = "🔴 **매도** (Sell)"
+        invest_opinion = "다수의 부정적 신호로 인해 손절 또는 비중 축소를 고려하세요."
+    
+    # 상세 분석 텍스트
+    analysis_text += f"### 종합 투자 의견: {recommendation}\n"
+    analysis_text += f"**총점: {total_score}/100점**\n\n"
+    analysis_text += f"{invest_opinion}\n\n"
+    
+    analysis_text += "---\n\n"
+    analysis_text += "### 📈 카테고리별 상세 점수\n\n"
+    analysis_text += f"1. **기술적 분석**: {scores['technical']}/30점\n"
+    analysis_text += f"2. **뉴스 감성**: {scores['news']}/20점\n"
+    analysis_text += f"3. **재무지표**: {scores['fundamental']}/30점\n"
+    analysis_text += f"4. **가치평가**: {scores['valuation']}/20점\n\n"
+    
+    # 재무지표 상세
+    if fundamental:
+        analysis_text += "---\n\n"
+        analysis_text += "### 💰 재무지표 상세\n\n"
+        analysis_text += f"- **PER** (주가수익비율): {fundamental['PER']:.2f}배\n"
+        analysis_text += f"  → {'낮음 (저평가)' if fundamental['PER'] < 15 else '높음 (고평가)' if fundamental['PER'] > 25 else '적정'}\n\n"
+        
+        analysis_text += f"- **PBR** (주가순자산비율): {fundamental['PBR']:.2f}배\n"
+        analysis_text += f"  → {'낮음 (저평가)' if fundamental['PBR'] < 1.0 else '높음 (고평가)' if fundamental['PBR'] > 2.0 else '적정'}\n\n"
+        
+        analysis_text += f"- **ROE** (자기자본이익률): {fundamental['ROE']:.2f}%\n"
+        analysis_text += f"  → {'우수' if fundamental['ROE'] >= 15 else '양호' if fundamental['ROE'] >= 10 else '보통' if fundamental['ROE'] >= 5 else '낮음'}\n\n"
+        
+        analysis_text += f"- **배당수익률**: {fundamental['DIV']:.2f}%\n"
+        analysis_text += f"  → {'높음' if fundamental['DIV'] >= 3 else '보통' if fundamental['DIV'] >= 1.5 else '낮음'}\n\n"
+        
+        analysis_text += f"- **EPS** (주당순이익): {fundamental['EPS']:,.0f}원\n"
+        analysis_text += f"- **BPS** (주당순자산): {fundamental['BPS']:,.0f}원\n"
+        analysis_text += f"- **DPS** (주당배당금): {fundamental['DPS']:,.0f}원\n\n"
+        
+        # 투자가치 판단
+        analysis_text += "---\n\n"
+        analysis_text += "### 🎯 투자가치 종합 판단\n\n"
+        
+        if fundamental['PBR'] < 1.0 and fundamental['ROE'] > 10:
+            analysis_text += "✅ **저평가 + 높은 수익성**: 현재 주가가 순자산 대비 저평가되어 있고, 자기자본이익률도 우수하여 **가치투자 관점에서 매력적**입니다.\n\n"
+        elif fundamental['PER'] < 15 and fundamental['DIV'] >= 2:
+            analysis_text += "✅ **저 PER + 높은 배당**: 수익 대비 주가가 낮고 배당수익률도 높아 **안정적 투자처**로 적합합니다.\n\n"
+        elif fundamental['PBR'] > 2.0 and fundamental['PER'] > 25:
+            analysis_text += "⚠️ **고평가 위험**: 주가가 순자산과 수익 대비 높게 형성되어 있어 **추가 상승보다는 조정 위험**이 있습니다.\n\n"
+        else:
+            analysis_text += "📊 **적정 수준**: 재무지표가 전반적으로 적정 수준이며, 기술적 신호와 뉴스를 함께 고려한 투자 판단이 필요합니다.\n\n"
+    
+    return {
+        'total_score': total_score,
+        'scores': scores,
+        'recommendation': recommendation,
+        'analysis_text': analysis_text
+    }
+
 # 일봉 차트 및 기술분석 함수
-def get_ohlcv_and_analysis(code, company_name, current_price):
+def get_ohlcv_and_analysis(code, company_name, current_price, market="KOSPI"):
     """pykrx로 일봉 데이터 가져오고 분석"""
     try:
         if stock is None:
@@ -698,6 +963,37 @@ def get_ohlcv_and_analysis(code, company_name, current_price):
 ⚠️ **면책사항**: 본 분석은 기술적 분석 기반의 교육용 정보입니다. 실제 투자는 다각적 조사와 개인 판단 하에 진행하시기 바랍니다.
 """
         
+        # 재무지표 가져오기 및 투자가치 분석 추가
+        fundamental = get_fundamental_data(code, market)
+        
+        if fundamental:
+            # 기술적 신호 구성
+            technical_signals = {
+                'rsi': rsi_last,
+                'macd_signal': 'bullish' if macd_last > signal_last else 'bearish',
+                'ma_alignment': 'bullish' if close_price > ma20_last > ma60_last else 
+                                'bearish' if close_price < ma20_last < ma60_last else 'neutral'
+            }
+            
+            # 뉴스 감성 분석
+            pos_count = len(df_news[df_news['분류'] == '긍정'])
+            neg_count = len(df_news[df_news['분류'] == '부정'])
+            news_sentiment = {
+                'positive': pos_count,
+                'negative': neg_count
+            }
+            
+            # 투자가치 분석 실행
+            investment_analysis = analyze_investment_value(
+                fundamental, 
+                technical_signals, 
+                news_sentiment, 
+                close_price
+            )
+            
+            # 투자가치 분석 텍스트를 기존 분석에 추가
+            analysis += "\n\n---\n\n" + investment_analysis['analysis_text']
+        
         return chart_image, analysis, df_news
         
     except Exception as e:
@@ -964,8 +1260,16 @@ if market_selected:
                 current_price = "정보없음"
             
             with st.spinner(f"📈 {company_name} 차트를 분석 중입니다..."):
+                # 현재 선택된 시장 확인 (KOSPI or KOSDAQ)
+                current_market = "KOSPI" if market_selected == 'kospi' else "KOSDAQ"
+                
                 # 일봉 차트 및 분석 데이터 가져오기
-                chart_image, analysis_text, df_news = get_ohlcv_and_analysis(company_code, company_name, current_price)
+                chart_image, analysis_text, df_news = get_ohlcv_and_analysis(
+                    company_code, 
+                    company_name, 
+                    current_price, 
+                    market=current_market
+                )
                 
                 if chart_image:
                     st.markdown(f"## 📊 {company_name} ({company_code}) 일봉 차트 분석")

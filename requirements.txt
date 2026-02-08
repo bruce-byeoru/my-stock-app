@@ -3,3 +3,7 @@ pandas
 requests
 beautifulsoup4
 lxml
+pillow
+python-dotenv
+pykrx
+matplotlib

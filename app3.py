@@ -159,43 +159,11 @@ def get_company_news(company_name, max_news=3):
         if news_list:
             return news_list
         
-        # 모두 실패시 기본 메시지
-        return [
-            {
-                'title': '삼성전자 실적 시즌 진입, 분기 영업익 예상 상회 가능성',
-                'url': 'https://finance.naver.com/item/main.naver?code=005930',
-                'date': datetime.now().strftime('%Y-%m-%d')
-            },
-            {
-                'title': '반도체 수급 개선 신호, 메모리 칩 가격 안정화',
-                'url': 'https://finance.naver.com/item/main.naver?code=005930',
-                'date': datetime.now().strftime('%Y-%m-%d')
-            },
-            {
-                'title': '삼성전자 AI 칩 수요 증가, 향후 성장 동력 주목',
-                'url': 'https://finance.naver.com/item/main.naver?code=005930',
-                'date': datetime.now().strftime('%Y-%m-%d')
-            }
-        ]
+        # 모두 실패시 빈 리스트 반환 (회사별 뉴스 없음)
+        return []
     except Exception as e:
-        # 네트워크 오류 등으로 뉴스를 가져올 수 없을 때 기본값 반환
-        return [
-            {
-                'title': '삼성전자 실적 시즌 진입, 분기 영업익 예상 상회 가능성',
-                'url': 'https://finance.naver.com/item/main.naver?code=005930',
-                'date': datetime.now().strftime('%Y-%m-%d')
-            },
-            {
-                'title': '반도체 수급 개선 신호, 메모리 칩 가격 안정화',
-                'url': 'https://finance.naver.com/item/main.naver?code=005930',
-                'date': datetime.now().strftime('%Y-%m-%d')
-            },
-            {
-                'title': '삼성전자 AI 칩 수요 증가, 향후 성장 동력 주목',
-                'url': 'https://finance.naver.com/item/main.naver?code=005930',
-                'date': datetime.now().strftime('%Y-%m-%d')
-            }
-        ]
+        # 네트워크 오류 등으로 뉴스를 가져올 수 없을 때 빈 리스트 반환
+        return []
 
 # 뉴스 기반 감정 분석 함수
 def analyze_news_sentiment(news_list, company_name):

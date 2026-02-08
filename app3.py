@@ -107,20 +107,29 @@ def get_company_news(company_name, max_news=10):
         # 모든 링크에서 뉴스 기사로 보이는 것들 필터링
         all_links = soup.find_all('a', href=True)
         
+        # 회사명 추출 (앞 2-4자 또는 주요 키워드)
+        company_keywords = [company_name]
+        if len(company_name) > 4:
+            company_keywords.append(company_name[:4])
+        if len(company_name) > 3:
+            company_keywords.append(company_name[:3])
+        
         for link in all_links:
-            if len(all_news) >= max_news:
+            if len(all_news) >= max_news * 2:  # 여유있게 수집 후 필터링
                 break
             
             try:
                 text = link.get_text(strip=True)
                 href = link.get('href', '')
                 
-                # 뉴스 기사 링크 조건:
+                # 뉴스 기사 제목 조건:
                 # 1) href가 http로 시작
-                # 2) 텍스트 길이가 10자 이상
-                # 3) static, promotion 등의 광고 링크 제외
+                # 2) 텍스트 길이 15~80자 (제목만, 본문 제외)
+                # 3) 회사명이 제목에 포함
+                # 4) static, promotion 등의 광고 링크 제외
                 if (href.startswith('http') and 
-                    len(text) > 10 and 
+                    15 <= len(text) <= 80 and
+                    any(keyword in text for keyword in company_keywords) and
                     'static' not in href.lower() and
                     'promotion' not in href.lower() and
                     'javascript' not in href.lower()):

@@ -86,19 +86,21 @@ def analyze_news_sentiment(news_list, company_name):
 load_dotenv()
 
 # 뉴스 크롤링 함수
-def get_company_news(company_name, max_news=3):
-    """Google News RSS에서 회사 관련 뉴스 가져오기 (제목, URL, 날짜)"""
+def get_company_news(company_name, max_news=10):
+    """Google News RSS 및 Naver 뉴스에서 회사 관련 뉴스 가져오기 (제목, URL, 날짜)"""
+    all_news = []
+    
     try:
         # Google News RSS 사용
         if feedparser:
             query = company_name.replace(' ', '%20')
-            # Google News RSS URL (한국 뉴스)
+            # Google News RSS URL (한국 뉴스, 최근 7일)
             url = f"https://news.google.com/rss/search?q={query}&hl=ko&gl=KR&ceid=KR:ko"
             
             feed = feedparser.parse(url)
-            news_list = []
             
-            for entry in feed.entries[:max_news]:
+            # 최대 20개까지 가져와서 필터링
+            for entry in feed.entries[:20]:
                 # 제목, URL, 발행 시간 추출
                 title = entry.get('title', '제목 없음')
                 link = entry.get('link', '#')
@@ -106,58 +108,70 @@ def get_company_news(company_name, max_news=3):
                 
                 # 날짜 파싱
                 try:
-                    pub_date = published.split('T')[0] if 'T' in published else published[:10]
+                    if 'published_parsed' in entry and entry.published_parsed:
+                        from time import strftime
+                        pub_date = strftime('%Y-%m-%d', entry.published_parsed)
+                    elif 'T' in published:
+                        pub_date = published.split('T')[0]
+                    else:
+                        pub_date = published[:10] if len(published) >= 10 else datetime.now().strftime('%Y-%m-%d')
                 except:
-                    pub_date = '오늘'
+                    pub_date = datetime.now().strftime('%Y-%m-%d')
                 
                 # HTML 태그 제거
                 title = re.sub(r'<[^>]+>', '', title)
-                news_list.append({
-                    'title': title,
-                    'url': link,
-                    'date': pub_date
-                })
-            
-            if news_list:
-                return news_list
-        
-        # 대체 방법: Naver 뉴스 크롤링
-        query = company_name
-        url = f"https://search.naver.com/search.naver?where=news&query={query}&sort=date"
-        
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        }
-        
-        response = requests.get(url, headers=headers, timeout=5)
-        response.encoding = 'utf-8'
-        soup = BeautifulSoup(response.content, 'html.parser')
-        
-        news_list = []
-        
-        # 여러 가능한 선택자 시도
-        articles = soup.find_all('div', class_=re.compile('news_wrap|newsflash_module'))[:max_news]
-        
-        for article in articles:
-            # 제목과 링크 찾기
-            title_elem = article.find('a') or article.find('h2')
-            # 날짜 찾기
-            date_elem = article.find('span', class_=re.compile('date|time'))
-            
-            if title_elem:
-                title = title_elem.get('title', title_elem.get_text(strip=True))
-                link = title_elem.get('href', '#')
-                date = date_elem.get_text(strip=True) if date_elem else '날짜 없음'
                 
-                if title:
-                    news_list.append({
+                # 중복 체크
+                if title and not any(n['title'] == title for n in all_news):
+                    all_news.append({
                         'title': title,
                         'url': link,
-                        'date': date
+                        'date': pub_date
                     })
         
-        if news_list:
-            return news_list
+        # Naver 뉴스도 추가로 크롤링 (부족할 경우 대비)
+        if len(all_news) < max_news:
+            query = company_name
+            url = f"https://search.naver.com/search.naver?where=news&query={query}&sort=date&pd=7"
+            
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+            
+            response = requests.get(url, headers=headers, timeout=5)
+            response.encoding = 'utf-8'
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            # 여러 가능한 선택자 시도
+            articles = soup.find_all('div', class_=re.compile('news_wrap|newsflash_module|news_area'))[:20]
+            
+            for article in articles:
+                if len(all_news) >= max_news:
+                    break
+                    
+                # 제목과 링크 찾기
+                title_elem = article.find('a', class_=re.compile('news_tit|title')) or article.find('a')
+                # 날짜 찾기
+                date_elem = article.find('span', class_=re.compile('info'))
+                
+                if title_elem:
+                    title = title_elem.get('title', title_elem.get_text(strip=True))
+                    link = title_elem.get('href', '#')
+                    date = date_elem.get_text(strip=True) if date_elem else datetime.now().strftime('%Y-%m-%d')
+                    
+                    # 중복 체크
+                    if title and not any(n['title'] == title for n in all_news):
+                        all_news.append({
+                            'title': title,
+                            'url': link,
+                            'date': date
+                        })
+        
+        # 최소 개수 확보되면 반환
+        if len(all_news) >= max_news:
+            return all_news[:max_news]
+        elif all_news:
+            return all_news
         
         # 모두 실패시 빈 리스트 반환 (회사별 뉴스 없음)
         return []

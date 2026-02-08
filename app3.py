@@ -86,9 +86,25 @@ def analyze_news_sentiment(news_list, company_name):
 load_dotenv()
 
 # 뉴스 크롤링 함수
-def get_company_news(company_name, max_news=10):
+def get_company_news(company_name, max_news=15):
     """Naver 뉴스 검색에서 회사 관련 뉴스의 제목과 링크만 가져옴."""
     all_news = []
+    
+    # 경조사, 광고, 무관한 키워드 (주가와 관련 없는 내용)
+    exclude_keywords = [
+        '빙부상', '부음', '부고', '조의', '애도', '서거', '별세', '영결식', '발인', '장례', '조문',
+        '구독', '이벤트', '프로모션', '할인', '세일', '쿠폰',
+        '채용', '인턴', '경력직', '신입', '구인', '입사',
+        '야구', '축구', '농구', '배구', '골프', '테니스',
+        '드라마', '영화', '예능', '배우', '가수',
+        '광고 접수', '보도자료', 'PR)', '(광고)'
+    ]
+    
+    # 일반 경제/정치 뉴스 (종목과 무관)
+    generic_keywords = [
+        '커지는 추경', '예산 시즌', '기획처', '정부', '정책',
+        '아침의 주요기사', '주요기사', '오늘의', '이번주',
+    ]
 
     try:
         import urllib.parse
@@ -104,11 +120,10 @@ def get_company_news(company_name, max_news=10):
         soup = BeautifulSoup(resp.text, 'html.parser')
 
         # 제목 앵커만 선택: 클래스에 'Lt1P2_'가 포함된 앵커
-        # (본문 요약은 'l144O'로 시작하므로 자동 제외됨)
         all_anchors = soup.find_all('a', href=True)
         
         for a in all_anchors:
-            if len(all_news) >= max_news:
+            if len(all_news) >= max_news * 2:  # 더 많이 수집한 후 필터링
                 break
 
             try:
@@ -124,12 +139,20 @@ def get_company_news(company_name, max_news=10):
                 if not href or not href.startswith('http'):
                     continue
 
-                # 회사명 정확 매칭
-                if company_name not in text:
+                # 네이버 스토어, 쇼핑몰, 헬프 링크 제외
+                if any(x in href for x in ['shopping', 'smartstore', 'store.naver', 'help.naver', 'news.naver.com/main']):
                     continue
 
-                # 제목 길이 제한 (광고 및 이상 텍스트 제외)
-                if len(text) < 10 or len(text) > 60:
+                # 제목 길이 제한
+                if len(text) < 15 or len(text) > 80:
+                    continue
+
+                # 경조사/광고/무관 키워드 제외
+                if any(kw in text for kw in exclude_keywords):
+                    continue
+                
+                # 일반 경제 뉴스 제외 (회사명이 제목에 있는 경우는 제외하지 않음)
+                if company_name not in text and any(kw in text for kw in generic_keywords):
                     continue
 
                 # 중복 체크
@@ -202,9 +225,9 @@ def analyze_news_sentiment(news_list, company_name):
         
         news_data.append({
             '분류': sentiment,
-            '뉴스': news['title'],
-            '링크': news['url'],
-            '날짜': news['date']
+            '뉴스': news.get('title', '') if isinstance(news, dict) else news['title'],
+            '링크': news.get('url', '') if isinstance(news, dict) else news['url'],
+            '날짜': news.get('date', datetime.now().strftime('%Y-%m-%d')) if isinstance(news, dict) else datetime.now().strftime('%Y-%m-%d')
         })
     
     df_news = pd.DataFrame(news_data)
@@ -989,7 +1012,7 @@ if market_selected:
                             else:
                                 st.info("중립적 뉴스가 없습니다.")
                     else:
-                        st.warning(f"⚠️ {company_name} 관련 뉴스를 가져올 수 없습니다. 네트워크 상태를 확인하거나 잠시 후 다시 시도해 주세요.")
+                        st.info(f"📰 {company_name} 관련 주요 뉴스가 없거나, 주가와 무관한 기사만 있습니다. (경조사, 광고 등은 자동으로 제외됩니다)")
                     
                     st.divider()
                     

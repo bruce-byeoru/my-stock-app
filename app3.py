@@ -29,66 +29,183 @@ load_dotenv()
 
 # 뉴스 기반 분석 함수
 def analyze_news_sentiment(news_list, company_name):
-    """뉴스 제목 기반으로 구체적인 긍정/부정 요소 분석"""
-    # 긍정/부정 키워드: 주가에 직접적인 영향을 줄 수 있는 키워드를 우선으로 둠
+    """뉴스 제목 기반으로 긍정/부정/중립 분류 후 DataFrame 반환"""
     positive_keywords = [
-        '상승', '증가', '호황', '호전', '강세', '반등', '부양', '부족', '수급',
-        '신규', '신사업', '신제품', '개선', '확대', '성장', '기대', '이익',
-        '수익', '영업익', '실적', '강화', '우호', '긍정', '추천', '역대',
-        '최고', '신고가', '장점', '경쟁력', '선두', '기술', '혁신', '수익성',
-        '가치', '매력', '기회', '투자', '증설', '신축', '회복', '개선', '매수',
-        '전망', '전환', '차익', '좋은', '우수', '탁월', '우월', '독점', '세계',
-        # 공장/생산/판매 관련 긍정 신호
-        '양산', '수주', '공급', '납품', '매출', '점유율', '점유', '수요', '계약', '수출', '증가세', '호재', '성장동력', '수요증가', '양산'
+        '상승', '증가', '호황', '호전', '강세', '반등', '부양', '수급', '신규', '신사업',
+        '신제품', '개선', '확대', '성장', '기대', '이익', '수익', '영업익', '실적', '강화',
+        '긍정', '추천', '신고가', '호재', '수주', '매출', '증가'
     ]
-    
+
     negative_keywords = [
-        '하락', '감소', '악화', '부진', '약세', '침체', '불황', '적자',
-        '손실', '하한가', '급락', '폭락', '위기', '위험', '문제', '분쟁',
-        '파업', '구조조정', '감원', '폐업', '철수', '소송', '적발',
-        '제재', '규제', '제한', '금지', '제조', '결함', '리콜', '부실',
-        '매도', '약세', '우려', '악재', '손절', '공매', '조정', '하향'
+        '하락', '감소', '악화', '부진', '약세', '침체', '불황', '적자', '손실', '급락', '폭락',
+        '위기', '문제', '분쟁', '파업', '구조조정', '감원', '소송', '규제', '리콜', '부실', '매도', '우려', '악재'
     ]
-    # 중립(일반 정보/제품 출시 등)으로 판단할 키워드
-    neutral_info_keywords = ['출시', '출시한다', '출시 예정', '공개', '발표', '업데이트', '업그레이드', '런칭', '리뷰']
-    
-    analysis = {
-        'positive': [],
-        'negative': [],
-        'keywords': {'positive': [], 'negative': []}
-    }
-    
+
+    neutral_info_keywords = ['출시', '발표', '공개', '보도자료', '리뷰']
+
+    news_data = []
     if not news_list:
-        return analysis
-    
+        return pd.DataFrame()
+
     for news in news_list:
-        title = news['title'].lower()
-        
-        for pos_kw in positive_keywords:
-            if pos_kw in title:
-                if news not in analysis['positive']:
-                    analysis['positive'].append(news)
-                if pos_kw not in analysis['keywords']['positive']:
-                    analysis['keywords']['positive'].append(pos_kw)
+        if isinstance(news, dict):
+            title = news.get('title', '')
+            url = news.get('url', '')
+            date = news.get('date', datetime.now().strftime('%Y-%m-%d'))
+        else:
+            title = str(news)
+            url = ''
+            date = datetime.now().strftime('%Y-%m-%d')
+
+        t_lower = title.lower()
+        sentiment = '중립'
+
+        for neg in negative_keywords:
+            if neg in t_lower:
+                sentiment = '부정'
                 break
-        
-        for neg_kw in negative_keywords:
-            if neg_kw in title:
-                if news not in analysis['negative']:
-                    analysis['negative'].append(news)
-                if neg_kw not in analysis['keywords']['negative']:
-                    analysis['keywords']['negative'].append(neg_kw)
-                break
+        if sentiment == '중립':
+            for pos in positive_keywords:
+                if pos in t_lower:
+                    sentiment = '긍정'
+                    break
+
+        news_data.append({
+            '분류': sentiment,
+            '뉴스': title,
+            '링크': url,
+            '날짜': date
+        })
+
+    df_news = pd.DataFrame(news_data)
+    return df_news
+
+# 투자 매력도 점수 계산 함수
+def calculate_investment_score(fundamental, technical_data, stock_data):
+    """
+    재무, 수급, 기술적 지표를 종합하여 0~100점 사이의 투자 매력도를 산출
+    Args:
+        fundamental: dict with PER, PBR, ROE, EPS, foreign_ratio 등
+        technical_data: dict with RSI, MA정배열 여부, MACD 등
+        stock_data: DataFrame with 거래량 등
+    Returns:
+        dict: {total_score, grade, breakdown, message}
+    """
+    scores = {}
     
-    return analysis
+    # 1. 재무지표 (25점): ROE + EPS
+    roe = fundamental.get('roe', 0)
+    eps = fundamental.get('eps', 0)
+    
+    # ROE 점수 (0~15점): 10% 이상이면 만점
+    roe_score = min(15, max(0, (roe / 10.0) * 15))
+    
+    # EPS 점수 (0~10점): 양수이면 기본점수, 1000 이상이면 만점
+    if eps > 0:
+        eps_score = min(10, max(5, (eps / 1000) * 10))
+    else:
+        eps_score = 0
+    
+    scores['재무지표'] = round(roe_score + eps_score, 1)
+    
+    # 2. 가치평가 (15점): PBR
+    pbr = fundamental.get('pbr', 0)
+    # PBR이 낮을수록 높은 점수 (1.0 미만이면 만점, 3.0 이상이면 0점)
+    if pbr > 0:
+        pbr_score = max(0, 15 * (1 - (pbr - 0.5) / 2.5))
+    else:
+        pbr_score = 7.5  # 데이터 없으면 중간점수
+    
+    scores['가치평가'] = round(pbr_score, 1)
+    
+    # 3. 수급분석 (30점): 외국인 보유 비율
+    foreign_ratio = fundamental.get('foreign_ratio', 0)
+    # 외국인 비율이 높을수록 높은 점수 (30% 이상이면 만점)
+    foreign_score = min(30, (foreign_ratio / 30.0) * 30)
+    
+    scores['수급분석'] = round(foreign_score, 1)
+    
+    # 4. 기술적분석 (20점): MA 정배열 + RSI
+    rsi = technical_data.get('rsi', 50)
+    ma_align = technical_data.get('ma_align', False)  # MA 정배열 여부
+    
+    # MA 정배열 여부 (0~10점)
+    ma_score = 10 if ma_align else 0
+    
+    # RSI 점수 (0~10점): 30~70 범위가 안전, 50 근처가 이상적
+    if 40 <= rsi <= 60:
+        rsi_score = 10
+    elif 30 <= rsi <= 70:
+        rsi_score = 7
+    elif rsi < 30:  # 과매도
+        rsi_score = 5
+    else:  # 과매수
+        rsi_score = 3
+    
+    scores['기술적분석'] = round(ma_score + rsi_score, 1)
+    
+    # 5. 모멘텀 (10점): 거래량 증가율
+    vol_ratio = technical_data.get('volume_ratio', 1.0)  # 평균 대비 비율
+    # 거래량이 평균보다 많으면 높은 점수 (2배 이상이면 만점)
+    momentum_score = min(10, max(0, (vol_ratio - 0.5) * 20 / 1.5))
+    
+    scores['모멘텀'] = round(momentum_score, 1)
+    
+    # 총점 계산
+    total_score = sum(scores.values())
+    
+    # 등급 부여 (A~F)
+    if total_score >= 90:
+        grade = 'A'
+    elif total_score >= 80:
+        grade = 'B'
+    elif total_score >= 70:
+        grade = 'C'
+    elif total_score >= 60:
+        grade = 'D'
+    elif total_score >= 50:
+        grade = 'E'
+    else:
+        grade = 'F'
+    
+    # 분석 메시지 생성
+    weakest = min(scores.items(), key=lambda x: x[1])
+    strongest = max(scores.items(), key=lambda x: x[1])
+    
+    message = f"본 종목은 {strongest[0]} 점수가 가장 높고({strongest[1]}점), "
+    message += f"{weakest[0]} 점수가 낮습니다({weakest[1]}점). "
+    
+    if scores['수급분석'] >= 20 and scores['가치평가'] < 10:
+        message += "수급은 양호하나 밸류에이션이 높아 단기 트레이딩에 적합합니다."
+    elif scores['가치평가'] >= 10 and scores['기술적분석'] < 10:
+        message += "가치는 저평가되었으나 기술적 신호가 약해 중장기 관점이 필요합니다."
+    elif scores['기술적분석'] >= 15:
+        message += "기술적 지표가 우수하여 단기 진입 타이밍으로 적합합니다."
+    else:
+        message += "종합적으로 균형잡힌 투자 기회를 제공합니다."
+    
+    return {
+        'total_score': round(total_score, 1),
+        'grade': grade,
+        'breakdown': scores,
+        'message': message
+    }
 
 # .env 파일에서 환경 변수 로드
 load_dotenv()
 
 # 뉴스 크롤링 함수
-def get_company_news(company_name, max_news=15):
-    """Naver 뉴스 검색에서 회사 관련 뉴스의 제목과 링크만 가져옴."""
-    all_news = []  # 제목에 회사명이 포함된 뉴스만
+def get_company_news(company_name, max_news=30, allowed_sites=None):
+    """Naver 뉴스 검색에서 회사 관련 뉴스의 제목과 링크만 가져옴.
+    allowed_sites: list of domain substrings to include (예: ['mk.co.kr', 'hankyung.com'])
+    """
+    all_news = []
+    if allowed_sites is None:
+        allowed_sites = [
+            'mk.co.kr', 'hankyung.com', 'sedaily.com', 'mt.co.kr', 'money.mt.co.kr',
+            'edaily.co.kr', 'fnnews.com', 'asiae.co.kr', 'heraldcorp.com', 'heraldbiz.com',
+            'ajunews.com', 'dt.co.kr', 'etnews.com', 'n.news.naver.com', 'news.naver.com'
+        ]
     
     # 경조사, 광고, 무관한 키워드 (주가와 관련 없는 내용)
     exclude_keywords = [
@@ -109,7 +226,7 @@ def get_company_news(company_name, max_news=15):
     try:
         import urllib.parse
         query = urllib.parse.quote(company_name)
-        url = f"https://search.naver.com/search.naver?where=news&query={query}&sm=tab_opt&sort=1&pd=7"
+        url = f"https://search.naver.com/search.naver?where=news&query={query}&sm=tab_opt&sort=0&pd=30"
 
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -150,38 +267,42 @@ def get_company_news(company_name, max_news=15):
                                            'help.naver', 'news.naver.com/main', 'promotion']):
                     continue
                 
-                # 3. 뉴스 사이트 확인 (외부 뉴스 사이트 링크 포함)
-                is_news_site = any(x in href for x in [
-                    'n.news.naver.com',    # 네이버 뉴스
-                    '.co.kr/',              # 한국 언론사
-                    'chosun.com', 'joongang.co.kr', 'donga.com', 'hankyung.com',
-                    'mk.co.kr', 'etnews.com', 'newsis.com', 'yonhapnews.co.kr',
-                    'mt.co.kr', 'sedaily.com', 'news1.kr', 'yna.co.kr',
-                    'etoday.co.kr', 'dt.co.kr', 'womaneconomy.co.kr'
-                ])
+                # 3. 허용된 뉴스 사이트 필터 (사용자 요구에 따라 특정 언론사만 허용)
+                # 네이버 뉴스 링크의 경우 office 파라미터로 언론사 확인
+                is_news_site = any(site in href for site in allowed_sites)
+                
+                # 네이버 뉴스 링크인 경우 추가 체크 (언론사 상관없이 허용 - 나중에 뉴스 제목으로 필터)
+                if 'n.news.naver.com' in href or 'news.naver.com' in href:
+                    is_news_site = True
                 
                 if not is_news_site:
                     continue
                 
-                # 4. 경조사/광고 키워드 제외
+                # 4. 경조사/광고 키워드 제외 (이것만 엄격하게)
                 if any(kw in title for kw in exclude_keywords):
                     continue
                 
-                # 5. 일반 경제 뉴스 제외
-                if any(kw in title for kw in generic_keywords):
+                # 5. 일반 경제 뉴스 제외는 완화 (너무 많이 걸러지므로)
+                # 단, 명확히 무관한 것만 제외
+                if '아침의 주요기사' in title or '오늘의 주요' in title:
                     continue
                 
-                # 6. **필수**: 회사명이 제목에 반드시 포함되어야 함
-                has_company_name = any(var in title for var in company_variations)
-                if not has_company_name:
-                    continue
+                # 6. 회사명 체크는 선택적으로 (우선순위 부여, 필수 아님)
+                # 회사명이 있으면 우선 수집, 없어도 일단 수집
                 
                 # 7. 중복 체크
                 if any(n['title'] == title for n in all_news):
                     continue
                 
-                # 8. 성공적으로 수집
-                all_news.append({'title': title, 'url': href})
+                # 8. 회사명 포함 여부로 우선순위 매기기
+                has_company_name = any(var in title for var in company_variations)
+                
+                # 회사명이 있는 뉴스를 먼저 추가
+                all_news.append({
+                    'title': title, 
+                    'url': href,
+                    'priority': 1 if has_company_name else 2
+                })
 
             except Exception:
                 continue
@@ -190,23 +311,13 @@ def get_company_news(company_name, max_news=15):
         print(f"뉴스 크롤링 오류: {e}")
         return []
 
-    # 우선순위 뉴스만 반환 (제목에 회사명이 포함된 것만)
-    return priority_news[:max_news]
-
-# 뉴스 기제목에 회사명이 포함된 뉴스만 반환
-    return allntiment(news_list, company_name):
-    """뉴스 제목 기반으로 구체적인 긍정/부정 요소 분석 및 DataFrame 반환"""
-    positive_keywords = [
-        '상승', '증가', '호황', '호전', '강세', '반등', '부양', '부족', '수급',
-        '신규', '신사업', '신제품', '개선', '확대', '성장', '기대', '이익',
-        '수익', '영업익', '실적', '강화', '우호', '긍정', '추천', '역대',
-        '최고', '신고가', '장점', '경쟁력', '선두', '기술', '혁신', '수익성',
-        '가치', '매력', '기회', '투자', '증설', '신축', '회복', '개선', '매수',
-        '전망', '전환', '차익', '좋은', '우수', '탁월', '우월', '독점', '세계',
-        # 공장/생산/판매 관련 긍정 신호
-        '양산', '수주', '공급', '납품', '매출', '점유율', '점유', '수요', '계약', '수출', '증가세', '호재', '성장동력', '수요증가'
-    ]
+    # 우선순위로 정렬 (회사명 포함된 것 먼저)
+    all_news.sort(key=lambda x: x.get('priority', 2))
     
+    # priority 키 제거 후 반환
+    result = [{'title': n['title'], 'url': n['url']} for n in all_news[:max_news]]
+    return result
+
     negative_keywords = [
         '하락', '감소', '악화', '부진', '약세', '침체', '불황', '적자',
         '손실', '하한가', '급락', '폭락', '위기', '위험', '문제', '분쟁',
@@ -301,72 +412,418 @@ def generate_news_analysis_text(df_news):
 
 # 재무지표 가져오기 함수
 def get_fundamental_data(code, market="KOSPI"):
-    """pykrx로 재무지표 가져오기 (PER, PBR, ROE, 배당율 등)"""
+    """네이버 증권 100위 리스트에서 재무지표 가져오기 (PER, PBR, ROE, 외국인비율 등)"""
     try:
-        if stock is None:
-            return None
+        # get_market_data를 사용해 기본 정보 가져오기
+        sosok = "0" if market == "KOSPI" else "1"
         
-        # 최근 영업일의 재무지표 가져오기 (최대 10일 전까지 시도)
-        for i in range(1, 11):
-            date = (datetime.now() - timedelta(days=i)).strftime('%Y%m%d')
+        for page in range(1, 6):
             try:
-                df = stock.get_market_fundamental_by_ticker(date, market=market)
-                if code in df.index and df.loc[code, 'PER'] > 0:
-                    data = df.loc[code]
-                    # ROE 계산 (EPS / BPS * 100)
-                    roe = (data['EPS'] / data['BPS'] * 100) if data['BPS'] > 0 else 0
-                    return {
-                        'PER': data['PER'],
-                        'PBR': data['PBR'],
-                        'ROE': round(roe, 2),
-                        'EPS': data['EPS'],
-                        'BPS': data['BPS'],
-                        'DIV': data['DIV'],  # 배당수익률 (%)
-                        'DPS': data['DPS'],  # 주당배당금
-                        'date': date
-                    }
+                df = get_market_data(sosok, page)
+                if '상세페이지' not in df.columns:
+                    continue
+                
+                for idx, row in df.iterrows():
+                    if str(code) in str(row.get('상세페이지', '')):
+                        # 기본 데이터 추출
+                        per = pd.to_numeric(str(row.get('PER', 0)).replace(',', ''), errors='coerce') or 0
+                        roe = pd.to_numeric(str(row.get('ROE', 0)).replace(',', '').replace('%', ''), errors='coerce') or 0
+                        foreign_ratio = pd.to_numeric(str(row.get('외국인비율', 0)).replace(',', '').replace('%', ''), errors='coerce') or 0
+                        current_price = pd.to_numeric(str(row.get('현재가', 0)).replace(',', ''), errors='coerce') or 0
+                        
+                        # 네이버 개별 페이지에서 PBR, EPS, BPS 크롤링 (캐시 사용, 디스크 캐시 추가)
+                        url = f"https://finance.naver.com/item/main.naver?code={code}"
+                        headers = {
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                        }
+
+                        pbr = 0
+                        eps = 0
+                        bps = 0
+
+                        # 간단한 런타임 캐시 (코드 -> soup)
+                        if not hasattr(get_fundamental_data, '_item_page_cache'):
+                            get_fundamental_data._item_page_cache = {}
+
+                        soup = None
+                        cache_entry = get_fundamental_data._item_page_cache.get(code)
+                        # 1) 런타임 캐시 우선
+                        if cache_entry and (time.time() - cache_entry[0]) < 300:
+                            soup = cache_entry[1]
+                        else:
+                            # 2) 디스크 캐시: .cache/item_pages/{code}.html (유효기간 600초)
+                            cache_dir = os.path.join('.cache', 'item_pages')
+                            os.makedirs(cache_dir, exist_ok=True)
+                            cache_file = os.path.join(cache_dir, f"{code}.html")
+                            use_disk = False
+                            try:
+                                if os.path.exists(cache_file):
+                                    mtime = os.path.getmtime(cache_file)
+                                    if time.time() - mtime < 600:
+                                        with open(cache_file, 'rb') as f:
+                                            content = f.read()
+                                        soup = BeautifulSoup(content, 'html.parser')
+                                        use_disk = True
+                            except:
+                                pass
+
+                            if not use_disk:
+                                try:
+                                    time.sleep(0.15)
+                                    response = requests.get(url, headers=headers, timeout=6)
+                                    response.encoding = 'euc-kr'
+                                    content = response.content
+                                    soup = BeautifulSoup(content, 'html.parser')
+                                    # write disk cache (best-effort)
+                                    try:
+                                        with open(cache_file, 'wb') as f:
+                                            f.write(content)
+                                    except:
+                                        pass
+                                    get_fundamental_data._item_page_cache[code] = (time.time(), soup)
+                                except:
+                                    soup = None
+
+                        if soup:
+                            # 정확한 테이블 기반 추출: 주요재무정보 테이블에서 최신 분기 실적 값 추출
+                            try:
+                                tables = soup.find_all('table')
+                                for table in tables:
+                                    text = table.get_text()
+                                    # 주요재무정보 테이블 식별 (PER, PBR, EPS, BPS 모두 포함)
+                                    if 'PER' in text and 'PBR' in text and 'EPS' in text and 'BPS' in text and '주요재무정보' in text:
+                                        # 헤더 row에서 (E) 추정치 컬럼 인덱스 파악
+                                        header_rows = table.find_all('tr')[:2]  # 처음 2개 row가 헤더
+                                        estimated_cols = set()  # (E) 포함된 컬럼 인덱스
+                                        for hr in header_rows:
+                                            ths = hr.find_all('th')
+                                            for idx, th in enumerate(ths):
+                                                if '(E)' in th.get_text():
+                                                    estimated_cols.add(idx)
+                                        
+                                        rows = table.find_all('tr')
+                                        for row in rows:
+                                            ths = row.find_all('th')
+                                            tds = row.find_all('td')
+                                            if ths and tds:
+                                                th_text = ths[0].get_text(strip=True) if ths else ''
+                                                
+                                                # 최신 분기 값 찾기 함수 (추정치 제외)
+                                                def get_latest_value(tds_list, skip_indices):
+                                                    # 역순으로 탐색하여 추정치가 아닌 첫 유효값 반환
+                                                    for i in range(len(tds_list)-1, -1, -1):
+                                                        if i in skip_indices:
+                                                            continue
+                                                        val_text = tds_list[i].get_text(strip=True)
+                                                        # 빈 값 건너뛰기
+                                                        if val_text and val_text != '-':
+                                                            try:
+                                                                val = float(val_text.replace(',', ''))
+                                                                if val != 0:  # 0 아닌 유효값
+                                                                    return val
+                                                            except:
+                                                                pass
+                                                    return 0
+                                                
+                                                # EPS(원) 행
+                                                if 'EPS' in th_text and '(' in th_text and eps == 0:
+                                                    eps = get_latest_value(tds, estimated_cols)
+                                                # BPS(원) 행
+                                                if 'BPS' in th_text and '(' in th_text and bps == 0:
+                                                    bps = get_latest_value(tds, estimated_cols)
+                                                # PBR은 테이블에서 추출하지 않음 (항상 현재가/BPS로 계산)
+                                        break
+                            except:
+                                pass
+                        
+                        # BPS/PBR/EPS 추정 및 교차검증
+                        # 우선순위: (1) 개별 페이지 값, (2) TOP-100 기반 계산(per->eps), (3) 추정식
+
+                        # 1) EPS: 개별 페이지가 유효하면 사용
+                        if (eps == 0 or eps is None) and per > 0 and current_price > 0:
+                            try:
+                                eps = float(current_price) / float(per)
+                            except:
+                                eps = 0
+
+                        # 2) BPS: 개별 페이지 우선, 없으면 EPS/ROE로 추정
+                        if (bps == 0 or bps is None) and eps > 0 and roe > 0:
+                            try:
+                                bps = float(eps) / (float(roe) / 100.0)
+                            except:
+                                bps = 0
+
+                        # 3) PBR: 항상 현재가 / BPS로 계산 (테이블의 PBR은 과거 종가 기준이므로 사용 안 함)
+                        if current_price > 0 and bps > 0:
+                            try:
+                                pbr = float(current_price) / float(bps)
+                            except:
+                                pbr = 0
+
+                        # 추가 보정: 너무 극단적인 값 제거
+                        try:
+                            if eps and eps < 0:
+                                eps = abs(eps)
+                            if bps and bps < 0:
+                                bps = abs(bps)
+                            if pbr and pbr < 0:
+                                pbr = abs(pbr)
+                        except:
+                            pass
+                        
+                        # DPS는 배당수익률이 있으면 현재가 기반으로 추정
+                        dps = 0
+                        try:
+                            dps = float(current_price) * float(2.0) / 100.0
+                        except:
+                            dps = 0
+
+                        # --- 외국인/기관 순매수량(또는 금액) 추출 시도 ---
+                        def parse_korean_number(s):
+                            try:
+                                if s is None:
+                                    return 0
+                                s = str(s).strip()
+                                s = s.replace(',', '').replace('\xa0', '')
+                                # 단위 처리: 억, 만
+                                if '억' in s:
+                                    s = s.replace('억원', '').replace('억', '')
+                                    return float(s) * 1e8
+                                if '만' in s:
+                                    s = s.replace('만', '')
+                                    return float(s) * 1e4
+                                # 괄호나 기타 문자 제거
+                                s = re.sub(r"[^0-9\-.]", '', s)
+                                if s == '' or s == '-' or s == '+':
+                                    return 0
+                                return float(s)
+                            except:
+                                return 0
+
+                        foreign_net_buy = 0
+                        inst_net_buy = 0
+                        investor_data_from_page = False  # 개별 페이지에서 추출했는지 플래그
+
+                        # 1) 먼저 TOP-리스트 row에서 후보 컬럼으로 추출 시도
+                        possible_keys = ['외국인매매', '외국인순매수량', '외국인순매수', 'frgn_buy_vol', 'frgn_buy', '외국인매수']
+                        for k in possible_keys:
+                            try:
+                                if k in row:
+                                    val = row.get(k, 0)
+                                    num = parse_korean_number(val)
+                                    if num:
+                                        foreign_net_buy = num
+                                        break
+                            except:
+                                pass
+
+                        possible_inst_keys = ['기관매매', '기관순매수량', '기관순매수', 'inst_buy_vol', 'inst_buy', '기관매수']
+                        for k in possible_inst_keys:
+                            try:
+                                if k in row:
+                                    val = row.get(k, 0)
+                                    num = parse_korean_number(val)
+                                    if num:
+                                        inst_net_buy = num
+                                        break
+                            except:
+                                pass
+
+                        # 2) 투자자별 매매동향 테이블에서 최신 거래일의 외국인/기관 순매수 추출
+                        try:
+                            if soup is not None:
+                                tables = soup.find_all('table')
+                                # 헤더에 '날짜', '외국인', '기관'이 있는 테이블 찾기
+                                for table in tables:
+                                    header_row = table.find('tr')
+                                    if header_row:
+                                        ths = [th.get_text(strip=True) for th in header_row.find_all('th')]
+                                        # 투자자별 매매동향 테이블 식별
+                                        if '외국인' in ths and '기관' in ths and '날짜' in ths:
+                                            # 헤더 인덱스 파악
+                                            try:
+                                                foreign_idx = ths.index('외국인')
+                                                inst_idx = ths.index('기관')
+                                            except:
+                                                continue
+                                            
+                                            # 첫 번째 데이터 row(최신 거래일) 찾기
+                                            rows = table.find_all('tr')
+                                            for row in rows[1:]:  # 헤더 스킵
+                                                # th와 td를 모두 합쳐서 cell 배열 생성
+                                                ths_in_row = row.find_all('th')
+                                                tds = row.find_all('td')
+                                                cells = ths_in_row + tds
+                                                
+                                                if len(cells) > max(foreign_idx, inst_idx):
+                                                    # 외국인 순매수
+                                                    if foreign_net_buy == 0:
+                                                        try:
+                                                            f_text = cells[foreign_idx].get_text(strip=True)
+                                                            foreign_net_buy = parse_korean_number(f_text)
+                                                            investor_data_from_page = True
+                                                        except:
+                                                            pass
+                                                    # 기관 순매수
+                                                    if inst_net_buy == 0:
+                                                        try:
+                                                            i_text = cells[inst_idx].get_text(strip=True)
+                                                            inst_net_buy = parse_korean_number(i_text)
+                                                            investor_data_from_page = True
+                                                        except:
+                                                            pass
+                                                    # 최신일 하나만 추출하면 종료
+                                                    if foreign_net_buy != 0 or inst_net_buy != 0:
+                                                        break
+                                            break
+                        except:
+                            pass
+
+                        # 3) 개별 페이지에서 추출한 데이터가 아니고, 값의 단위가 '주수'로 보이는 소규모 숫자면 현재가로 환산 시도
+                        # (개별 페이지 투자자 매매동향 테이블은 이미 주 단위이므로 환산 불필요)
+                        try:
+                            if not investor_data_from_page and foreign_net_buy and abs(foreign_net_buy) < 1e6 and current_price > 0:
+                                foreign_net_buy = foreign_net_buy * float(current_price)
+                        except:
+                            pass
+                        try:
+                            if not investor_data_from_page and inst_net_buy and abs(inst_net_buy) < 1e6 and current_price > 0:
+                                inst_net_buy = inst_net_buy * float(current_price)
+                        except:
+                            pass
+
+                        fundamental_data = {
+                            'PER': per,
+                            'PBR': pbr,
+                            'ROE': roe,
+                            'EPS': eps,
+                            'BPS': bps,
+                            'DIV': 2.0,  # 기본값
+                            'DPS': dps,
+                            'current_price': current_price,
+                            'foreign_ratio': foreign_ratio,
+                            'foreign_net_buy': int(foreign_net_buy) if foreign_net_buy else 0,
+                            'inst_net_buy': int(inst_net_buy) if inst_net_buy else 0,
+                            'date': datetime.now().strftime('%Y%m%d')
+                        }
+                        
+                        return fundamental_data
             except:
                 continue
         
         return None
+        
     except Exception as e:
         return None
 
 # 투자가치 분석 및 점수 계산 함수
-def analyze_investment_value(fundamental, technical_signals, news_sentiment, current_price):
-    """재무지표, 기술적 신호, 뉴스 감성을 종합해서 투자가치 분석 및 점수 계산"""
+def analyze_investment_value(fundamental, technical_signals, current_price):
+    """재무지표, 기술적 신호, 외국인/기관 매매를 종합해서 투자가치 분석 및 점수 계산 (0~100점)"""
     
     scores = {
-        'technical': 0,      # 기술적 분석 (30점)
-        'news': 0,           # 뉴스 감성 (20점)
-        'fundamental': 0,    # 재무지표 (30점)
-        'valuation': 0       # 가치평가 (20점)
+        'fundamental': 0,    # 재무지표 (25점): ROE, EPS
+        'valuation': 0,      # 가치평가 (15점): PBR
+        'supply_demand': 0,  # 수급분석 (30점): 외국인/기관
+        'technical': 0,      # 기술적 분석 (20점): MA, RSI
+        'momentum': 0        # 모멘텀 (10점): 거래량
     }
     
-    analysis_text = "## 📊 투자가치 종합 분석\n\n"
+    analysis_text = "## 📊 투자 매력도 점수 분석\n\n"
     
-    # 1. 기술적 분석 점수 (30점)
+    # 1. 재무지표 점수 (25점): ROE + EPS
+    fund_score = 0
+    if fundamental:
+        # ROE 점수 (15점) - 높을수록 좋음
+        roe = fundamental.get('ROE', 0)
+        if roe >= 20:
+            fund_score += 15
+        elif roe >= 15:
+            fund_score += 12
+        elif roe >= 10:
+            fund_score += 9
+        elif roe >= 5:
+            fund_score += 5
+        else:
+            fund_score += 2
+        
+        # EPS 점수 (10점) - 양수이고 높을수록 좋음
+        eps = fundamental.get('EPS', 0)
+        if eps >= 10000:
+            fund_score += 10
+        elif eps >= 5000:
+            fund_score += 8
+        elif eps >= 2000:
+            fund_score += 6
+        elif eps >= 500:
+            fund_score += 4
+        elif eps > 0:
+            fund_score += 2
+        else:
+            fund_score += 0
+    
+    scores['fundamental'] = fund_score
+    
+    # 2. 가치평가 점수 (15점): PBR
+    val_score = 0
+    if fundamental:
+        pbr = fundamental.get('PBR', 999)
+        if pbr > 0:
+            # PBR이 낮을수록 높은 점수 (1.0 미만이면 만점, 3.0 이상이면 0점)
+            if pbr < 0.8:
+                val_score = 15  # 매우 저평가
+            elif pbr < 1.0:
+                val_score = 13  # 저평가
+            elif pbr < 1.5:
+                val_score = 10  # 적정
+            elif pbr < 2.0:
+                val_score = 7   # 약간 고평가
+            elif pbr < 3.0:
+                val_score = 4   # 고평가
+            else:
+                val_score = 1   # 매우 고평가
+    
+    scores['valuation'] = val_score
+    
+    # 3. 수급분석 점수 (30점): 외국인 + 기관
+    supply_score = 0
+    if fundamental:
+        # 외국인 보유비율 (15점) - 높을수록 좋음
+        foreign_ratio = fundamental.get('foreign_ratio', 0)
+        if foreign_ratio >= 30:
+            supply_score += 15
+        elif foreign_ratio >= 20:
+            supply_score += 12
+        elif foreign_ratio >= 10:
+            supply_score += 8
+        elif foreign_ratio >= 5:
+            supply_score += 5
+        else:
+            supply_score += 2
+        
+        # 외국인 + 기관 순매수 (15점)
+        foreign_net_buy = fundamental.get('foreign_net_buy', 0)
+        inst_net_buy = fundamental.get('inst_net_buy', 0)
+        total_net_buy = foreign_net_buy + inst_net_buy
+        
+        if total_net_buy > 2000000000:  # 20억 이상 순매수
+            supply_score += 15
+        elif total_net_buy > 500000000:  # 5억 이상
+            supply_score += 12
+        elif total_net_buy > 100000000:  # 1억 이상
+            supply_score += 9
+        elif total_net_buy > 0:
+            supply_score += 6
+        elif total_net_buy > -100000000:
+            supply_score += 3
+        else:
+            supply_score += 0
+    
+    scores['supply_demand'] = supply_score
+    
+    # 4. 기술적분석 점수 (20점): MA 정배열 + RSI
     tech_score = 0
     if technical_signals:
-        # RSI 점수 (10점)
-        rsi = technical_signals.get('rsi', 50)
-        if 30 <= rsi <= 70:
-            tech_score += 10  # 적정 구간
-        elif 20 <= rsi < 30 or 70 < rsi <= 80:
-            tech_score += 7   # 과매도/과매수 진입
-        else:
-            tech_score += 3   # 극단적 과매도/과매수
-        
-        # MACD 점수 (10점)
-        macd_signal = technical_signals.get('macd_signal', 'neutral')
-        if macd_signal == 'bullish':
-            tech_score += 10
-        elif macd_signal == 'neutral':
-            tech_score += 5
-        else:
-            tech_score += 0
-        
-        # 이평선 배열 점수 (10점)
+        # MA 정배열 점수 (10점)
         ma_alignment = technical_signals.get('ma_alignment', 'mixed')
         if ma_alignment == 'bullish':
             tech_score += 10
@@ -374,143 +831,106 @@ def analyze_investment_value(fundamental, technical_signals, news_sentiment, cur
             tech_score += 5
         else:
             tech_score += 0
+        
+        # RSI 점수 (10점): 30~70 범위가 안전, 40~60이 이상적
+        rsi = technical_signals.get('rsi', 50)
+        if 40 <= rsi <= 60:
+            tech_score += 10  # 최적 구간
+        elif 30 <= rsi < 40 or 60 < rsi <= 70:
+            tech_score += 7   # 양호 구간
+        elif rsi < 30:  # 과매도
+            tech_score += 5   # 반등 기회
+        else:  # 과매수
+            tech_score += 3   # 조정 위험
     
     scores['technical'] = tech_score
     
-    # 2. 뉴스 감성 점수 (20점)
-    news_score = 0
-    if news_sentiment:
-        pos = news_sentiment.get('positive', 0)
-        neg = news_sentiment.get('negative', 0)
-        total = pos + neg
-        
-        if total > 0:
-            pos_ratio = pos / total
-            if pos_ratio >= 0.7:
-                news_score = 20
-            elif pos_ratio >= 0.5:
-                news_score = 15
-            elif pos_ratio >= 0.3:
-                news_score = 10
-            else:
-                news_score = 5
+    # 5. 모멘텀 점수 (10점): 거래량 증가율
+    momentum_score = 0
+    if technical_signals:
+        vol_ratio = technical_signals.get('volume_ratio', 1.0)  # 평균 대비 비율
+        # 거래량이 평균보다 많으면 높은 점수
+        if vol_ratio >= 2.0:
+            momentum_score = 10  # 2배 이상
+        elif vol_ratio >= 1.5:
+            momentum_score = 8
+        elif vol_ratio >= 1.2:
+            momentum_score = 6
+        elif vol_ratio >= 1.0:
+            momentum_score = 4
+        elif vol_ratio >= 0.8:
+            momentum_score = 2
         else:
-            news_score = 10  # 뉴스 없으면 중립
-    else:
-        news_score = 10
+            momentum_score = 0
     
-    scores['news'] = news_score
-    
-    # 3. 재무지표 점수 (30점)
-    fund_score = 0
-    if fundamental:
-        # PER 점수 (10점) - 낮을수록 좋음
-        per = fundamental.get('PER', 999)
-        if per > 0:
-            if per < 10:
-                fund_score += 10
-            elif per < 15:
-                fund_score += 8
-            elif per < 20:
-                fund_score += 6
-            elif per < 30:
-                fund_score += 4
-            else:
-                fund_score += 2
-        
-        # ROE 점수 (10점) - 높을수록 좋음
-        roe = fundamental.get('ROE', 0)
-        if roe >= 20:
-            fund_score += 10
-        elif roe >= 15:
-            fund_score += 8
-        elif roe >= 10:
-            fund_score += 6
-        elif roe >= 5:
-            fund_score += 4
-        else:
-            fund_score += 2
-        
-        # 배당수익률 점수 (10점)
-        div = fundamental.get('DIV', 0)
-        if div >= 4:
-            fund_score += 10
-        elif div >= 3:
-            fund_score += 8
-        elif div >= 2:
-            fund_score += 6
-        elif div >= 1:
-            fund_score += 4
-        else:
-            fund_score += 2
-    
-    scores['fundamental'] = fund_score
-    
-    # 4. 가치평가 점수 (20점)
-    val_score = 0
-    if fundamental:
-        # PBR 기준 저평가 분석 (10점)
-        pbr = fundamental.get('PBR', 999)
-        if pbr > 0:
-            if pbr < 0.8:
-                val_score += 10  # 매우 저평가
-            elif pbr < 1.0:
-                val_score += 8   # 저평가
-            elif pbr < 1.5:
-                val_score += 6   # 적정
-            elif pbr < 2.0:
-                val_score += 4   # 약간 고평가
-            else:
-                val_score += 2   # 고평가
-        
-        # BPS 대비 현재가 (10점)
-        bps = fundamental.get('BPS', 0)
-        if bps > 0 and current_price > 0:
-            price_to_bps = current_price / bps
-            if price_to_bps < 0.8:
-                val_score += 10
-            elif price_to_bps < 1.0:
-                val_score += 8
-            elif price_to_bps < 1.5:
-                val_score += 6
-            elif price_to_bps < 2.0:
-                val_score += 4
-            else:
-                val_score += 2
-    
-    scores['valuation'] = val_score
+    scores['momentum'] = momentum_score
     
     # 총점 계산
     total_score = sum(scores.values())
     
-    # 투자 의견
-    if total_score >= 80:
-        recommendation = "🟢 **매수 적극 권장** (Strong Buy)"
-        invest_opinion = "기술적/재무적/감성적 지표가 모두 우수하여 적극 매수를 권장합니다."
-    elif total_score >= 65:
-        recommendation = "🟢 **매수** (Buy)"
-        invest_opinion = "전반적으로 긍정적인 신호가 많아 매수를 고려할 만합니다."
+    # 등급 부여 (A/B/C/D/E/F) - 90점 이상 A, 80점 이상 B, 70점 이상 C, 60점 이상 D, 50점 이상 E, 50점 미만 F
+    if total_score >= 90:
+        grade = 'A'
+        recommendation = "🟢 **A등급** - 매수 적극 권장"
+        invest_opinion = "모든 지표가 우수하며 투자 매력도가 매우 높습니다."
+    elif total_score >= 80:
+        grade = 'B'
+        recommendation = "🟢 **B등급** - 매수 권장"
+        invest_opinion = "대부분의 지표가 양호하며 투자 가치가 높습니다."
+    elif total_score >= 70:
+        grade = 'C'
+        recommendation = "🟡 **C등급** - 보유 또는 매수 검토"
+        invest_opinion = "전반적으로 양호한 수준이나 일부 보완이 필요합니다."
+    elif total_score >= 60:
+        grade = 'D'
+        recommendation = "🟡 **D등급** - 중립, 신중한 접근"
+        invest_opinion = "긍정/부정 신호가 혼재되어 신중한 판단이 필요합니다."
     elif total_score >= 50:
-        recommendation = "🟡 **보유** (Hold)"
-        invest_opinion = "긍정/부정 신호가 혼재되어 있어 기존 보유자는 유지, 신규 매수는 신중 검토가 필요합니다."
-    elif total_score >= 35:
-        recommendation = "🟠 **관망** (Wait)"
-        invest_opinion = "부정적 신호가 많아 추가 하락 가능성이 있습니다. 관망이 바람직합니다."
+        grade = 'E'
+        recommendation = "🟠 **E등급** - 관망 권장"
+        invest_opinion = "부정적 신호가 우세하여 추가 하락 가능성이 있습니다."
     else:
-        recommendation = "🔴 **매도** (Sell)"
-        invest_opinion = "다수의 부정적 신호로 인해 손절 또는 비중 축소를 고려하세요."
+        grade = 'F'
+        recommendation = "🔴 **F등급** - 투자 부적합"
+        invest_opinion = "다수의 부정적 신호로 투자를 권장하지 않습니다."
+    
+    # 강점/약점 분석
+    weakest = min(scores.items(), key=lambda x: x[1])
+    strongest = max(scores.items(), key=lambda x: x[1])
+    
+    category_names = {
+        'fundamental': '재무지표',
+        'valuation': '가치평가',
+        'supply_demand': '수급분석',
+        'technical': '기술적분석',
+        'momentum': '모멘텀'
+    }
     
     # 상세 분석 텍스트
-    analysis_text += f"### 종합 투자 의견: {recommendation}\n"
-    analysis_text += f"**총점: {total_score}/100점**\n\n"
+    analysis_text += f"### 종합 평가: {recommendation}\n"
+    analysis_text += f"**총점: {total_score}/100점 (등급: {grade})**\n\n"
     analysis_text += f"{invest_opinion}\n\n"
+    
+    analysis_text += f"**강점**: {category_names[strongest[0]]} ({strongest[1]}점) | "
+    analysis_text += f"**약점**: {category_names[weakest[0]]} ({weakest[1]}점)\n\n"
+    
+    # 투자 전략 제안
+    if scores['supply_demand'] >= 20 and scores['valuation'] < 10:
+        analysis_text += "💡 **전략**: 수급은 양호하나 밸류에이션이 높아 **단기 트레이딩**에 적합합니다.\n\n"
+    elif scores['valuation'] >= 10 and scores['technical'] < 10:
+        analysis_text += "💡 **전략**: 가치는 저평가되었으나 기술적 신호가 약해 **중장기 관점**이 필요합니다.\n\n"
+    elif scores['technical'] >= 15:
+        analysis_text += "💡 **전략**: 기술적 지표가 우수하여 **단기 진입 타이밍**으로 적합합니다.\n\n"
+    else:
+        analysis_text += "💡 **전략**: 종합적으로 균형잡힌 접근이 필요합니다.\n\n"
     
     analysis_text += "---\n\n"
     analysis_text += "### 📈 카테고리별 상세 점수\n\n"
-    analysis_text += f"1. **기술적 분석**: {scores['technical']}/30점\n"
-    analysis_text += f"2. **뉴스 감성**: {scores['news']}/20점\n"
-    analysis_text += f"3. **재무지표**: {scores['fundamental']}/30점\n"
-    analysis_text += f"4. **가치평가**: {scores['valuation']}/20점\n\n"
+    analysis_text += f"1. **재무지표 (ROE, EPS)**: {scores['fundamental']}/25점\n"
+    analysis_text += f"2. **가치평가 (PBR)**: {scores['valuation']}/15점\n"
+    analysis_text += f"3. **수급분석 (외국인/기관)**: {scores['supply_demand']}/30점\n"
+    analysis_text += f"4. **기술적분석 (MA, RSI)**: {scores['technical']}/20점\n"
+    analysis_text += f"5. **모멘텀 (거래량)**: {scores['momentum']}/10점\n\n"
     
     # 재무지표 상세
     if fundamental:
@@ -531,6 +951,18 @@ def analyze_investment_value(fundamental, technical_signals, news_sentiment, cur
         analysis_text += f"- **EPS** (주당순이익): {fundamental['EPS']:,.0f}원\n"
         analysis_text += f"- **BPS** (주당순자산): {fundamental['BPS']:,.0f}원\n"
         analysis_text += f"- **DPS** (주당배당금): {fundamental['DPS']:,.0f}원\n\n"
+        
+        # 외국인/기관 매매 정보
+        analysis_text += f"- **외국인 보유비율**: {fundamental.get('foreign_ratio', 0):.2f}%\n"
+        analysis_text += f"  → {'매우 높음 (신뢰도 ↑)' if fundamental.get('foreign_ratio', 0) >= 30 else '높음' if fundamental.get('foreign_ratio', 0) >= 20 else '보통' if fundamental.get('foreign_ratio', 0) >= 10 else '낮음'}\n\n"
+        
+        foreign_net = fundamental.get('foreign_net_buy', 0)
+        analysis_text += f"- **외국인 순매수**: {foreign_net:,.0f}원\n"
+        analysis_text += f"  → {'강한 매수세' if foreign_net > 1000000000 else '순매수' if foreign_net > 0 else '순매도' if foreign_net > -1000000000 else '강한 매도세'}\n\n"
+        
+        inst_net = fundamental.get('inst_net_buy', 0)
+        analysis_text += f"- **기관 순매수**: {inst_net:,.0f}원\n"
+        analysis_text += f"  → {'강한 매수세' if inst_net > 1000000000 else '순매수' if inst_net > 0 else '순매도' if inst_net > -1000000000 else '강한 매도세'}\n\n"
         
         # 투자가치 판단
         analysis_text += "---\n\n"
@@ -786,8 +1218,13 @@ def get_ohlcv_and_analysis(code, company_name, current_price, market="KOSPI"):
         dist_to_high = ((high_60 - close_price) / close_price * 100)
         dist_to_low = ((close_price - low_60) / low_60 * 100)
         
-        # 뉴스 가져오기 (10개)
-        news_list = get_company_news(company_name, max_news=10)
+        # 뉴스 가져오기 (20개로 증가) - 주요 경제지만
+        allowed_news_sites = [
+            'mk.co.kr', 'hankyung.com', 'sedaily.com', 'mt.co.kr', 'money.mt.co.kr',
+            'edaily.co.kr', 'fnnews.com', 'asiae.co.kr', 'heraldcorp.com', 'heraldbiz.com', 
+            'ajunews.com', 'dt.co.kr', 'etnews.com', 'n.news.naver.com', 'news.naver.com'
+        ]
+        news_list = get_company_news(company_name, max_news=20, allowed_sites=allowed_news_sites)
         
         # === 단순화를 위한 미리 계산된 텍스트 ===
         # 거래량 의미 계산
@@ -842,7 +1279,7 @@ def get_ohlcv_and_analysis(code, company_name, current_price, market="KOSPI"):
         # 상황 분석 계산
         situation = f"고점({high_60:,.0f}원)에서 되돌려 내려오는 중. MA20 이탈 시 MA60까지 추가 하락 가능성 증가" if close_price < ma20_last else "상승 추세 유지중. 고점 돌파 시 추가 상승 경향 가능"
         
-        analysis = f"""
+        technical_report = f"""
 ## 📊 {company_name} ({code}) 상세 기술적 분석 보고서
 **분석일**: {datetime.now().strftime('%Y년 %m월 %d일 %H:%M')}
 
@@ -979,36 +1416,27 @@ def get_ohlcv_and_analysis(code, company_name, current_price, market="KOSPI"):
         fundamental = get_fundamental_data(code, market)
         
         if fundamental:
-            # 기술적 신호 구성
+            # 기술적 신호 구성 (모멘텀 점수용 volume_ratio 추가)
             technical_signals = {
                 'rsi': rsi_last,
                 'macd_signal': 'bullish' if macd_last > signal_last else 'bearish',
                 'ma_alignment': 'bullish' if close_price > ma20_last > ma60_last else 
-                                'bearish' if close_price < ma20_last < ma60_last else 'neutral'
+                                'bearish' if close_price < ma20_last < ma60_last else 'neutral',
+                'volume_ratio': vol_last / vol_avg_20 if vol_avg_20 > 0 else 1.0
             }
             
-            # 뉴스 감성 분석 (안전하게 처리)
-            pos_count = 0
-            neg_count = 0
-            if not df_news.empty and '분류' in df_news.columns:
-                pos_count = len(df_news[df_news['분류'] == '긍정'])
-                neg_count = len(df_news[df_news['분류'] == '부정'])
-            
-            news_sentiment = {
-                'positive': pos_count,
-                'negative': neg_count
-            }
-            
-            # 투자가치 분석 실행
+            # 투자가치 분석 실행 (뉴스 항목 제거)
             investment_analysis = analyze_investment_value(
                 fundamental, 
                 technical_signals, 
-                news_sentiment, 
                 close_price
             )
             
-            # 투자가치 분석 텍스트를 기존 분석에 추가
-            analysis += "\n\n---\n\n" + investment_analysis['analysis_text']
+            # 투자가치 분석을 먼저 배치하고, 그 다음에 상세 기술적 분석 추가
+            analysis = investment_analysis['analysis_text'] + "\n\n---\n\n" + technical_report
+        else:
+            # fundamental 데이터가 없으면 기술적 분석만 표시
+            analysis = technical_report
         
         return chart_image, analysis, df_news
         
@@ -1060,9 +1488,9 @@ def get_chart_image(code):
 
 
 def get_market_data(sosok, page):
-    # 필요한 지표 설정
+    # 필요한 지표 설정 (PBR, EPS, 외국인/기관 순매수 추가)
     fields = [
-        'per', 'pbr', 'eps', 'frgn_rate', 
+        'per', 'pbr', 'eps', 'bps', 'frgn_rate', 
         'frgn_buy_vol', 'inst_buy_vol', 
         'sales', 'operating_profit', 'net_income'
     ]
@@ -1115,6 +1543,7 @@ def get_market_data(sosok, page):
 
         # 데이터 보정
         if len(codes) == len(df):
+            df['코드'] = codes
             df['상세페이지'] = [f"https://finance.naver.com/item/main.naver?code={c}" for c in codes]
             # --- 추가: 기술분석 링크 생성 ---
             df['기술분석'] = [f"https://finance.naver.com/item/fchart.naver?code={c}" for c in codes]
@@ -1127,38 +1556,142 @@ def get_market_data(sosok, page):
         st.error(f"데이터를 가져오는 중 오류 발생: {e}")
         return pd.DataFrame()
 
+# 페이지 상단 앵커 및 스크롤 기능
+st.markdown('<div id="top"></div>', unsafe_allow_html=True)
+
 # Session state 초기화
 if 'view_mode' not in st.session_state:
-    st.session_state.view_mode = 'list'
+    st.session_state.view_mode = 'list'  # list, select, detail, ranking
 if 'selected_stock_code' not in st.session_state:
     st.session_state.selected_stock_code = None
 if 'selected_stock_name' not in st.session_state:
     st.session_state.selected_stock_name = None
+if 'ranking_market' not in st.session_state:
+    st.session_state.ranking_market = None
 
 # 뒤로가기 버튼 처리 (detail 모드일 때)
 if st.session_state.view_mode == 'detail':
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("← 목록으로 돌아가기"):
+            st.session_state.view_mode = 'list'
+            st.session_state.selected_stock_code = None
+            st.session_state.selected_stock_name = None
+            st.rerun()
+    with col2:
+        if st.button("📊 종목 선택하기"):
+            st.session_state.view_mode = 'select'
+            st.rerun()
+
+# 뒤로가기 버튼 처리 (ranking 모드일 때)
+if st.session_state.view_mode == 'ranking':
     if st.button("← 목록으로 돌아가기"):
         st.session_state.view_mode = 'list'
-        st.session_state.selected_stock_code = None
-        st.session_state.selected_stock_name = None
+        st.session_state.ranking_market = None
+        st.rerun()
+
+# select 모드일 때 돌아가기
+if st.session_state.view_mode == 'select':
+    if st.button("← 목록으로 돌아가기"):
+        st.session_state.view_mode = 'list'
         st.rerun()
 
 # 버튼 레이아웃 (list 모드일 때만 표시)
 if st.session_state.view_mode == 'list':
-    col1, col2 = st.columns(2)
+    col1, col2, col3, col4 = st.columns([2, 2, 2, 2])
     with col1: 
-        if st.button("🔵 코스피(KOSPI) TOP 100"):
+        if st.button("🔵 코스피(KOSPI) TOP 100", use_container_width=True):
             st.session_state.market_type = "kospi"
     with col2: 
-        if st.button("🔴 코스닥(KOSDAQ) TOP 100"):
+        if st.button("🔴 코스닥(KOSDAQ) TOP 100", use_container_width=True):
             st.session_state.market_type = "kosdaq"
+    with col3:
+        if st.button("📊 종목 분석", use_container_width=True):
+            # 현재 선택된 시장이 있으면 그대로, 없으면 코스피로 기본 설정
+            if 'market_type' not in st.session_state or st.session_state.market_type is None:
+                st.session_state.market_type = "kospi"
+            st.session_state.view_mode = 'select'
+            st.rerun()
+    with col4:
+        if st.button("🏆 추천순위", type="primary", use_container_width=True):
+            st.session_state.view_mode = 'ranking'
+            st.rerun()
+
+# ========== SELECT 화면 (종목 선택) ==========
+if st.session_state.view_mode == 'select':
+    st.markdown("## 📊 종목 선택")
+    
+    # 코스피/코스닥 선택
+    market_option = st.selectbox(
+        "시장 선택",
+        options=["코스피(KOSPI)", "코스닥(KOSDAQ)"],
+        index=0 if st.session_state.get('market_type', 'kospi') == 'kospi' else 1,
+        key='market_selector'
+    )
+    
+    # 시장 변경 감지
+    new_market = 'kospi' if '코스피' in market_option else 'kosdaq'
+    if new_market != st.session_state.get('market_type'):
+        st.session_state.market_type = new_market
+        # 캐시 키 변경으로 데이터 새로 로드
+        st.rerun()
+    
+    m_code = "0" if st.session_state.market_type == "kospi" else "1"
+    
+    # TOP 100 데이터 로드 (캐싱)
+    cache_key = f"market_data_{st.session_state.market_type}"
+    if cache_key not in st.session_state:
+        with st.spinner("시장 데이터를 불러오는 중..."):
+            df_raw = pd.concat([get_market_data(m_code, 1), get_market_data(m_code, 2)], ignore_index=True).head(100)
+            st.session_state[cache_key] = df_raw
+    else:
+        df_raw = st.session_state[cache_key]
+    
+    # 종목 코드 추출
+    if '코드' not in df_raw.columns or df_raw['코드'].isna().all():
+        df_raw['코드'] = ""
+        for idx, row in df_raw.iterrows():
+            if row['상세페이지'] and 'code=' in str(row['상세페이지']):
+                code = str(row['상세페이지']).split('code=')[-1]
+                df_raw.at[idx, '코드'] = code
+        st.session_state[cache_key] = df_raw  # 업데이트
+    
+    # 종목 선택 UI
+    company_options = df_raw[df_raw['코드'] != ''].apply(
+        lambda x: f"{x['종목명']} ({x['코드']})", axis=1
+    ).tolist()
+    
+    if company_options:
+        # 기본 선택: 1위 종목 (시가총액 1위)
+        default_index = 0
+        
+        col1, col2 = st.columns([4, 1])
+        with col1:
+            selected_company = st.selectbox(
+                "종목 선택 (시가총액 순위)",
+                options=company_options,
+                index=default_index,
+                key=f'company_selector_{st.session_state.market_type}'  # 시장별 고유 key
+            )
+        with col2:
+            if st.button("📈 분석 보기", type="primary", use_container_width=True):
+                company_name = selected_company.split(" (")[0]
+                company_code = selected_company.split("(")[1].rstrip(")")
+                st.session_state.selected_stock_name = company_name
+                st.session_state.selected_stock_code = company_code
+                st.session_state.view_mode = 'detail'
+                st.rerun()
+    else:
+        st.error("종목 데이터를 불러올 수 없습니다.")
+    
+    st.stop()  # select 화면 종료
 
 market_selected = st.session_state.get("market_type", None)
 
-if market_selected:
+if market_selected and st.session_state.view_mode == 'list':
     m_code = "0" if market_selected == "kospi" else "1"
     
-    # 데이터를 session_state에 캠시하여 한 번만 로드
+    # 데이터를 session_state에 캐시하여 한 번만 로드
     cache_key = f"market_data_{market_selected}"
     
     if cache_key not in st.session_state:
@@ -1190,15 +1723,57 @@ if market_selected:
                 code = str(row['상세페이지']).split('code=')[-1]
                 df_raw.at[idx, '코드'] = code
 
-        # 열 순서 배치 (분석 컬럼 추가)
+        # PBR이 없거나 비어있으면 추정 계산하여 추가
+        # 우선: 현재가/ BPS 기반 계산, 없으면 PER * (ROE/100) 근사식 사용
+        def to_num(val):
+            try:
+                if pd.isna(val):
+                    return None
+                s = str(val)
+                s = s.replace(',', '').replace('%', '').strip()
+                if s == '' or s == '-' or s == 'None':
+                    return None
+                return float(s)
+            except:
+                return None
+
+        if 'PBR' not in df_raw.columns:
+            df_raw['PBR'] = None
+
+        for idx, row in df_raw.iterrows():
+            try:
+                existing = to_num(row.get('PBR', None))
+                if existing is not None:
+                    df_raw.at[idx, 'PBR'] = existing
+                    continue
+
+                # 현재가와 BPS가 있으면 사용
+                price = to_num(row.get('현재가', None))
+                bps = to_num(row.get('BPS', None)) or to_num(row.get('BPS(원)', None))
+                if price and bps and bps > 0:
+                    df_raw.at[idx, 'PBR'] = price / bps
+                    continue
+
+                # PER 및 ROE로 근사: PBR = PER * (ROE / 100)
+                per = to_num(row.get('PER', None))
+                roe = to_num(row.get('ROE', None))
+                if per is not None and roe is not None:
+                    df_raw.at[idx, 'PBR'] = per * (roe / 100.0)
+                    continue
+
+                df_raw.at[idx, 'PBR'] = None
+            except:
+                df_raw.at[idx, 'PBR'] = None
+
+        # 열 순서 배치 (PBR 추가, 컬럼 최적화)
         target_cols = [
-            'N', '종목명', '상세페이지', '코드', '현재가', '전일비', '등락률', '시가총액', 
-            'PER', 'ROE', 'EPS', '외국인비중', '외국인매매', '기관매매'
+            'N', '종목명', '현재가', '전일비', '등락률', '시가총액', 
+            'PER', 'PBR', 'ROE', 'EPS', '외국인비중'
         ]
         final_df = df_raw[[c for c in target_cols if c in df_raw.columns]].copy()
 
-        # 숫자형 변환 (스타일링 및 계산용)
-        num_cols = ['현재가', '시가총액', 'PER', 'ROE', 'EPS', '외국인비중', '외국인매매', '기관매매']
+        # 숫자형 변환
+        num_cols = ['현재가', '시가총액', 'PER', 'PBR', 'ROE', 'EPS', '외국인비중']
         for c in num_cols:
             if c in final_df.columns:
                 final_df[c] = pd.to_numeric(final_df[c].astype(str).str.replace(',', '').str.replace('%', ''), errors='coerce')
@@ -1213,146 +1788,461 @@ if market_selected:
                 for i in range(len(column))
             ]
 
-        # view_mode에 따라 다른 화면 표시
-        if st.session_state.view_mode == 'list':
-            # 상단에 종목 분석 UI 배치
-            company_options = df_raw[df_raw['코드'] != ''].apply(lambda x: f"{x['종목명']} ({x['코드']})", axis=1).tolist()
+        # 데이터프레임 렌더링 (컬럼 폭 최적화로 스크롤 최소화)
+        st.dataframe(
+            final_df.style.apply(apply_stock_color, subset=['전일비', '등락률']).format({
+                'N': '{:d}',
+                '현재가': '{:,.0f}', 
+                '시가총액': '{:,.0f}', 
+                'PER': '{:.2f}',
+                'PBR': '{:.2f}',
+                'ROE': '{:.1f}', 
+                'EPS': '{:,.0f}',
+                '외국인비중': '{:.1f}%'
+            }, na_rep="-"),
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "N": st.column_config.NumberColumn("순위", width=50),
+            "종목명": st.column_config.TextColumn("종목명", width=100),
+            "현재가": st.column_config.NumberColumn("현재가", width=80),
+            "전일비": st.column_config.TextColumn("전일비", width=70),
+            "등락률": st.column_config.TextColumn("등락률", width=60),
+            "시가총액": st.column_config.NumberColumn("시총", width=80),
+            "PER": st.column_config.NumberColumn("PER", width=55),
+            "PBR": st.column_config.NumberColumn("PBR", width=55),
+            "ROE": st.column_config.NumberColumn("ROE", width=55),
+            "EPS": st.column_config.NumberColumn("EPS", width=70),
+            "외국인비중": st.column_config.NumberColumn("외국인%", width=60)
+            }
+        )
+
+        st.success(f"✅ {'KOSPI' if market_selected == 'kospi' else 'KOSDAQ'} 상위 100개 종목을 불러왔습니다.")
+
+# ========== DETAIL 화면 (종목 분석) ==========
+if st.session_state.view_mode == 'detail':
+    company_name = st.session_state.selected_stock_name
+    company_code = st.session_state.selected_stock_code
+    
+    # 현재 시장 타입 가져오기
+    m_code = "0" if st.session_state.get('market_type', 'kospi') == "kospi" else "1"
+    cache_key = f"market_data_{st.session_state.get('market_type', 'kospi')}"
+    
+    # 현재가 정보 찾기
+    current_price = "정보없음"
+    if cache_key in st.session_state:
+        df_raw = st.session_state[cache_key]
+        company_row = df_raw[df_raw['코드'] == company_code]
+        if len(company_row) > 0:
+            current_price = company_row.iloc[0]['현재가']
+    
+    with st.spinner(f"📈 {company_name} 차트를 분석 중입니다..."):
+        current_market = "KOSPI" if st.session_state.get('market_type', 'kospi') == 'kospi' else "KOSDAQ"
+        
+        # 일봉 차트 및 분석 데이터 가져오기
+        chart_image, analysis_text, df_news = get_ohlcv_and_analysis(
+            company_code, 
+            company_name, 
+            current_price, 
+            market=current_market
+        )
+        
+        if chart_image:
+            st.markdown(f"## 📊 {company_name} ({company_code}) 일봉 차트 분석")
+
+            # 차트 이미지 표시
+            try:
+                st.image(chart_image, width=None, caption="일봉 차트 (이동평균선: 초록5일, 빨강20일, 주황60일, 보라 볼린저밴드)")
+            except Exception:
+                st.image(chart_image, caption="일봉 차트 (이동평균선: 초록5일, 빨강20일, 주황60일, 보라 볼린저밴드)")
+
+            st.divider()
             
-            if company_options:
-                st.markdown("### 📊 종목 분석")
-                col1, col2 = st.columns([4, 1])
-                with col1:
-                    selected_company = st.selectbox("분석할 종목 선택", options=company_options, label_visibility="collapsed", key='company_selector')
-                with col2:
-                    if st.button("📈 분석 보기", type="primary", use_container_width=True):
-                        company_name = selected_company.split(" (")[0]
-                        company_code = selected_company.split("(")[1].rstrip(")")
-                        st.session_state.selected_stock_name = company_name
-                        st.session_state.selected_stock_code = company_code
-                        st.session_state.view_mode = 'detail'
-                        st.rerun()
+            # 뉴스 테이블 표시
+            st.markdown("### 📰 시장 뉴스")
+            
+            if not df_news.empty and '분류' in df_news.columns:
+                positive_news = df_news[df_news['분류'] == '긍정']
+                negative_news = df_news[df_news['분류'] == '부정']
+                neutral_news = df_news[df_news['분류'] == '중립']
                 
-                st.divider()
-            else:
-                st.warning("종목 정보를 불러올 수 없습니다.")
-            
-            # 데이터프레임 렌더링
-            st.dataframe(
-                final_df.style.apply(apply_stock_color, subset=['전일비', '등락률']).format({
-                    'N': '{:d}',
-                    '현재가': '{:,.0f}', 
-                    '시가총액': '{:,.0f}', 
-                    'PER': '{:.2f}', 
-                    'ROE': '{:.1f}', 
-                    'EPS': '{:,.0f}',
-                    '외국인비중': '{:.2f}%',
-                    '외국인매매': '{:,.0f}',
-                    '기관매매': '{:,.0f}'
-                }, na_rep="-"),
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    "N": st.column_config.NumberColumn("순위", width=40),
-                    "종목명": st.column_config.TextColumn("종목명", pinned=True),
-                    "상세페이지": st.column_config.LinkColumn("상세", display_text="보기"),
-                    "코드": None,  # 숨김
-                    "등락률": st.column_config.TextColumn("등락률")
-                }
-            )
-
-            st.success(f"✅ {'KOSPI' if market_selected == 'kospi' else 'KOSDAQ'} 상위 100개 종목을 불러왔습니다.")
-
-        # detail 모드: 선택된 종목 분석 표시
-        elif st.session_state.view_mode == 'detail':
-            company_name = st.session_state.selected_stock_name
-            company_code = st.session_state.selected_stock_code
-            
-            # 현재가 정보 찾기
-            company_row = df_raw[df_raw['코드'] == company_code]
-            if len(company_row) > 0:
-                company_row = company_row.iloc[0]
-                current_price = company_row['현재가']
-            else:
-                current_price = "정보없음"
-            
-            with st.spinner(f"📈 {company_name} 차트를 분석 중입니다..."):
-                # 현재 선택된 시장 확인 (KOSPI or KOSDAQ)
-                current_market = "KOSPI" if market_selected == 'kospi' else "KOSDAQ"
+                tab1, tab2, tab3 = st.tabs([
+                    f"✅ 긍정 ({len(positive_news)})", 
+                    f"⚠️ 부정 ({len(negative_news)})", 
+                    f"⚪ 중립 ({len(neutral_news)})"
+                ])
                 
-                # 일봉 차트 및 분석 데이터 가져오기
-                chart_image, analysis_text, df_news = get_ohlcv_and_analysis(
-                    company_code, 
-                    company_name, 
-                    current_price, 
-                    market=current_market
-                )
-                
-                if chart_image:
-                    st.markdown(f"## 📊 {company_name} ({company_code}) 일봉 차트 분석")
-
-                    # 차트 이미지 표시 (use_column_width deprecated -> width 사용)
-                    try:
-                        st.image(chart_image, width="stretch", caption="일봉 차트 (이동평균선: 초록5일, 빨강20일, 주황60일, 보라 볼린저밴드)")
-                    except Exception:
-                        # 일부 Streamlit 버전은 'stretch'를 지원하지 않을 수 있으므로 안전하게 정수 너비로 대체
-                        st.image(chart_image, width=None, caption="일봉 차트 (이동평균선: 초록5일, 빨강20일, 주황60일, 보라 볼린저밴드)")
-
-                    st.divider()
-                    
-                    # 뉴스 테이블 표시 (카테고리별)
-                    st.markdown("### 📰 시장 뉴스")
-                    
-                    if not df_news.empty and '분류' in df_news.columns:
-                        # 분류별로 분리
-                        positive_news = df_news[df_news['분류'] == '긍정']
-                        negative_news = df_news[df_news['분류'] == '부정']
-                        neutral_news = df_news[df_news['분류'] == '중립']
-                        
-                        # 탭으로 표시
-                        tab1, tab2, tab3 = st.tabs([f"✅ 긍정 ({len(positive_news)})", f"⚠️ 부정 ({len(negative_news)})", f"⚪ 중립 ({len(neutral_news)})"])
-                        
-                        with tab1:
-                            if not positive_news.empty:
-                                for idx, row in positive_news.iterrows():
-                                    st.markdown(f"**[{row['뉴스']}]({row['링크']})** ({row['날짜']})")
-                            else:
-                                st.info("긍정적 뉴스가 없습니다.")
-                        
-                        with tab2:
-                            if not negative_news.empty:
-                                for idx, row in negative_news.iterrows():
-                                    st.markdown(f"**[{row['뉴스']}]({row['링크']})** ({row['날짜']})")
-                            else:
-                                st.info("부정적 뉴스가 없습니다.")
-                        
-                        with tab3:
-                            if not neutral_news.empty:
-                                for idx, row in neutral_news.iterrows():
-                                    st.markdown(f"**[{row['뉴스']}]({row['링크']})** ({row['날짜']})")
-                            else:
-                                st.info("중립적 뉴스가 없습니다.")
+                with tab1:
+                    if not positive_news.empty:
+                        for idx, row in positive_news.iterrows():
+                            st.markdown(f"**[{row['뉴스']}]({row['링크']})** ({row['날짜']})")
                     else:
-                        st.info(f"📰 {company_name} 관련 주요 뉴스가 없거나, 주가와 무관한 기사만 있습니다. (경조사, 광고 등은 자동으로 제외됩니다)")
-                    
-                    st.divider()
-                    
-                    # 기술분석 텍스트
-                    st.markdown(analysis_text)
-                    
-                    # 하단에도 돌아가기 버튼 추가
-                    st.divider()
-                    if st.button("← 목록으로 돌아가기", key="back_button_bottom"):
-                        st.session_state.view_mode = 'list'
-                        st.session_state.selected_stock_code = None
-                        st.session_state.selected_stock_name = None
-                        st.rerun()
+                        st.info("긍정적 뉴스가 없습니다.")
+                
+                with tab2:
+                    if not negative_news.empty:
+                        for idx, row in negative_news.iterrows():
+                            st.markdown(f"**[{row['뉴스']}]({row['링크']})** ({row['날짜']})")
+                    else:
+                        st.info("부정적 뉴스가 없습니다.")
+                
+                with tab3:
+                    if not neutral_news.empty:
+                        for idx, row in neutral_news.iterrows():
+                            st.markdown(f"**[{row['뉴스']}]({row['링크']})** ({row['날짜']})")
+                    else:
+                        st.info("중립적 뉴스가 없습니다.")
+            else:
+                st.info(f"📰 {company_name} 관련 주요 뉴스가 없거나, 주가와 무관한 기사만 있습니다. (경조사, 광고 등은 자동으로 제외됩니다)")
+            
+            st.divider()
+            
+            # 기술분석 텍스트
+            st.markdown(analysis_text)
+            
+            # 하단 네비게이션
+            st.divider()
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("🔼 위로 가기", key="scroll_top", use_container_width=True):
+                    # 종목 선택 화면으로 돌아가기
+                    st.session_state.view_mode = 'select'
+                    st.rerun()
+            with col2:
+                if st.button("← 목록으로 돌아가기", key="back_to_list", use_container_width=True):
+                    st.session_state.view_mode = 'list'
+                    st.session_state.selected_stock_code = None
+                    st.session_state.selected_stock_name = None
+                    st.rerun()
+        else:
+            st.error(f"❌ {company_name} 차트를 분석할 수 없습니다.\n오류: {analysis_text}")
+            
+            st.divider()
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("🔼 위로 가기", key="scroll_top_error", use_container_width=True):
+                    # 종목 선택 화면으로 돌아가기
+                    st.session_state.view_mode = 'select'
+                    st.rerun()
+            with col2:
+                if st.button("← 목록으로 돌아가기", key="back_to_list_error", use_container_width=True):
+                    st.session_state.view_mode = 'list'
+                    st.session_state.selected_stock_code = None
+                    st.session_state.selected_stock_name = None
+                    st.rerun()
+
+# ========== RANKING 화면 (추천순위) ==========
+if st.session_state.view_mode == 'ranking':
+    st.header("🏆 종목 추천순위")
+    st.write("투자 매력도 점수 기반 TOP 종목 순위")
+    
+    # 시장 선택
+    if st.session_state.ranking_market is None:
+        st.subheader("시장을 선택하세요")
+        
+        # 분석 대상 개수 선택 (시장 선택 전에 먼저 보여줌)
+        st.write("**분석할 종목 개수 선택** (시가총액 상위 기준)")
+        size_options = [100, 50, 30, 10]
+        if 'ranking_size' not in st.session_state:
+            st.session_state.ranking_size = 100
+        
+        selected_size = st.selectbox(
+            "분석 대상 개수", 
+            options=size_options, 
+            index=size_options.index(st.session_state.ranking_size),
+            key='ranking_size_selector',
+            help="시가총액 상위 N개 종목에 대해서만 평가합니다. 숫자가 작을수록 빠릅니다."
+        )
+        st.session_state.ranking_size = selected_size
+        
+        st.divider()
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🔵 코스피(KOSPI) 추천순위", use_container_width=True):
+                st.session_state.ranking_market = "kospi"
+                st.rerun()
+        with col2:
+            if st.button("🔴 코스닥(KOSDAQ) 추천순위", use_container_width=True):
+                st.session_state.ranking_market = "kosdaq"
+                st.rerun()
+        st.stop()
+    
+    # 선택된 시장의 데이터 가져오기
+    market_selected = st.session_state.ranking_market
+    m_code = "0" if market_selected == "kospi" else "1"
+    selected_n = st.session_state.get('ranking_size', 100)
+    
+    st.subheader(f"{'🔵 코스피' if market_selected == 'kospi' else '🔴 코스닥'} 추천순위 (상위 {selected_n}개 분석)")
+    
+    with st.spinner("종목 점수를 계산 중입니다... (1~2분 소요)"):
+        # TOP 100 데이터 가져오기
+        df1 = get_market_data(m_code, 1)
+        df2 = get_market_data(m_code, 2)
+        
+        if df1.empty or df2.empty:
+            st.error("데이터를 가져올 수 없습니다.")
+            st.stop()
+        
+        df_all = pd.concat([df1, df2], ignore_index=True).head(selected_n)
+        
+        # 코드 컬럼 확인 및 디버깅
+        if '코드' not in df_all.columns:
+            st.error(f"코드 컬럼이 없습니다. 사용 가능한 컬럼: {', '.join(df_all.columns)}")
+            st.stop()
+        
+        st.info(f"분석 대상: {len(df_all)}개 종목")
+        
+        # 각 종목의 점수 계산
+        ranking_data = []
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        error_count = 0
+        
+        total = len(df_all)
+        for idx, (_, row) in enumerate(df_all.iterrows()):
+            status_text.text(f"분석 중... {idx+1}/{total} (실패: {error_count})")
+            progress_bar.progress((idx + 1) / total)
+            
+            try:
+                code = row.get('코드', '')
+                company_name = row.get('종목명', '')
+                
+                if not code or not company_name:
+                    error_count += 1
+                    continue
+                
+                # 재무지표 가져오기
+                fundamental = get_fundamental_data(code, "KOSPI" if market_selected == "kospi" else "KOSDAQ")
+                
+                if not fundamental:
+                    error_count += 1
+                    continue
+                
+                # 기본 기술적 신호 (기술 데이터 없이도 재무만으로 점수 계산)
+                technical_signals = {
+                    'rsi': 50,  # 중립값
+                    'macd_signal': 'neutral',
+                    'ma_alignment': 'neutral',
+                    'volume_ratio': 1.0  # 평균
+                }
+                
+                close_price = fundamental.get('current_price', 0)
+                
+                # 기술적 데이터 가져오기 시도 (실패해도 계속 진행)
+                try:
+                    if stock is not None:
+                        end_date = datetime.now().strftime('%Y%m%d')
+                        start_date = (datetime.now() - timedelta(days=90)).strftime('%Y%m%d')
+                        df_price = stock.get_market_ohlcv(start_date, end_date, code)
+                        
+                        if df_price is not None and len(df_price) > 20:
+                            df_price['MA20'] = df_price['종가'].rolling(window=20).mean()
+                            df_price['MA60'] = df_price['종가'].rolling(window=60).mean()
+                            
+                            # RSI 계산
+                            delta = df_price['종가'].diff()
+                            gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+                            loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+                            rs = gain / loss
+                            df_price['RSI'] = 100 - (100 / (1 + rs))
+                            
+                            last_row = df_price.iloc[-1]
+                            close_price = last_row['종가']
+                            ma20 = df_price['MA20'].iloc[-1]
+                            ma60 = df_price['MA60'].iloc[-1]
+                            rsi = df_price['RSI'].iloc[-1]
+                            
+                            vol_avg = df_price['거래량'].tail(20).mean()
+                            vol_last = last_row['거래량']
+                            
+                            if not pd.isna(rsi) and not pd.isna(ma20) and not pd.isna(ma60):
+                                technical_signals = {
+                                    'rsi': rsi,
+                                    'macd_signal': 'neutral',
+                                    'ma_alignment': 'bullish' if close_price > ma20 > ma60 else 
+                                                    'bearish' if close_price < ma20 < ma60 else 'neutral',
+                                    'volume_ratio': vol_last / vol_avg if vol_avg > 0 else 1.0
+                                }
+                except Exception as tech_error:
+                    # 기술적 분석 실패해도 재무지표로 계속 진행
+                    pass
+                
+                # 투자 매력도 계산
+                investment_analysis = analyze_investment_value(fundamental, technical_signals, close_price if close_price > 0 else 1000)
+                
+                # 점수 기반 등급 부여 (사용자 지정 임계값)
+                total_score_val = investment_analysis.get('total_score', 0)
+                if total_score_val >= 90:
+                    grade = 'A'
+                elif total_score_val >= 80:
+                    grade = 'B'
+                elif total_score_val >= 70:
+                    grade = 'C'
+                elif total_score_val >= 60:
+                    grade = 'D'
+                elif total_score_val >= 50:
+                    grade = 'E'
                 else:
-                    st.error(f"❌ {company_name} 차트를 분석할 수 없습니다.\n오류: {analysis_text}")
+                    grade = 'F'
+                
+                ranking_data.append({
+                    '순위': 0,
+                    '종목명': company_name,
+                    '코드': code,
+                    '총점': investment_analysis['total_score'],
+                    '등급': grade,
+                    '재무지표': investment_analysis['scores']['fundamental'],
+                    '가치평가': investment_analysis['scores']['valuation'],
+                    '수급분석': investment_analysis['scores']['supply_demand'],
+                    '기술적분석': investment_analysis['scores']['technical'],
+                    '모멘텀': investment_analysis['scores']['momentum'],
+                    'PER': fundamental.get('PER', 0),
+                    'PBR': fundamental.get('PBR', 0),
+                    'ROE': fundamental.get('ROE', 0),
+                    'EPS': fundamental.get('EPS', 0),
+                    '외국인비율': fundamental.get('foreign_ratio', 0)
+                })
                     
-                    # 에러 시에도 돌아가기 버튼
-                    st.divider()
-                    if st.button("← 목록으로 돌아가기", key="back_button_error"):
-                        st.session_state.view_mode = 'list'
-                        st.session_state.selected_stock_code = None
-                        st.session_state.selected_stock_name = None
-                        st.rerun()
+            except Exception as e:
+                error_count += 1
+                continue
+        
+        progress_bar.empty()
+        status_text.empty()
+        
+        if not ranking_data:
+            st.error(f"순위 데이터를 계산할 수 없습니다. (분석 실패: {error_count}/{total})")
+            st.warning("다음 사항을 확인해주세요:")
+            st.write("- 네트워크 연결 상태")
+            st.write("- pykrx 라이브러리 설치 여부")
+            st.write("- 시장 운영 시간 (평일 9:00-15:30)")
+            if st.button("다시 시도"):
+                st.session_state.ranking_market = None
+                st.rerun()
+            st.stop()
+        
+        st.info(f"✅ 성공: {len(ranking_data)}개 종목, ❌ 실패: {error_count}개 종목")
+        
+        # 데이터프레임 생성 및 정렬
+        df_ranking = pd.DataFrame(ranking_data)
+        df_ranking = df_ranking.sort_values('총점', ascending=False).reset_index(drop=True)
+        df_ranking['순위'] = range(1, len(df_ranking) + 1)
+        
+        # 결과 표시
+        st.success(f"✅ 총 {len(df_ranking)}개 종목 분석 완료")
+        
+        # 테이블 표시 (컬럼 순서 조정: PER, PBR, ROE 순서로)
+        display_df = df_ranking[[
+            '순위', '종목명', '총점', '등급',
+            '재무지표', '가치평가', '수급분석', '기술적분석', '모멘텀',
+            'PER', 'PBR', 'ROE', 'EPS', '외국인비율'
+        ]].copy()
+        
+        # 숫자 포맷팅 (간결하게)
+        display_df['총점'] = display_df['총점'].apply(lambda x: f"{x:.1f}")
+        display_df['PER'] = display_df['PER'].apply(lambda x: f"{x:.1f}" if x > 0 else "-")
+        display_df['PBR'] = display_df['PBR'].apply(lambda x: f"{x:.2f}")
+        display_df['ROE'] = display_df['ROE'].apply(lambda x: f"{x:.1f}")
+        display_df['EPS'] = display_df['EPS'].apply(lambda x: f"{int(x/1000)}K" if abs(x) >= 1000 else f"{int(x)}")
+        display_df['외국인비율'] = display_df['외국인비율'].apply(lambda x: f"{x:.1f}")
+        
+        # 컬럼명 축약
+        display_df.columns = [
+            '순위', '종목명', '점수', '등급',
+            '재무', '가치', '수급', '기술', '모멘텀',
+            'PER', 'PBR', 'ROE', 'EPS', '외국인%'
+        ]
+        
+        st.dataframe(
+            display_df,
+            use_container_width=True,
+            height=600,
+            hide_index=True,
+            column_config={
+                "순위": st.column_config.NumberColumn(width="small"),
+                "종목명": st.column_config.TextColumn(width="medium"),
+                "점수": st.column_config.TextColumn(width="small"),
+                "등급": st.column_config.TextColumn(width="small"),
+                "재무": st.column_config.NumberColumn(width="small"),
+                "가치": st.column_config.NumberColumn(width="small"),
+                "수급": st.column_config.NumberColumn(width="small"),
+                "기술": st.column_config.NumberColumn(width="small"),
+                "모멘텀": st.column_config.NumberColumn(width="small"),
+                "PER": st.column_config.TextColumn(width="small"),
+                "PBR": st.column_config.TextColumn(width="small"),
+                "ROE": st.column_config.TextColumn(width="small"),
+                "EPS": st.column_config.TextColumn(width="small"),
+                "외국인%": st.column_config.TextColumn(width="small")
+            }
+        )
+        
+        # 상위 10종목 하이라이트
+        st.subheader("🥇 TOP 10 종목 - 상세 분석")
+        st.write("투자 매력도 상위 10개 종목의 우수성 평가")
+        
+        top10 = df_ranking.head(10)
+        for idx, row in top10.iterrows():
+            # 선정 이유 분석
+            reasons = []
+            
+            # 재무지표 평가
+            if row['재무지표'] >= 20:
+                reasons.append(f"✅ **우수한 재무건전성** (ROE {row['ROE']:.1f}%, EPS {row['EPS']:,.0f}원)")
+            elif row['재무지표'] >= 15:
+                reasons.append(f"✓ 양호한 재무지표 (ROE {row['ROE']:.1f}%)")
+            
+            # 가치평가 분석
+            if row['가치평가'] >= 12:
+                reasons.append(f"✅ **저평가 구간** (PBR {row['PBR']:.2f}배 - 상승 여력 큼)")
+            elif row['가치평가'] >= 9:
+                reasons.append(f"✓ 적정 밸류에이션 (PBR {row['PBR']:.2f}배)")
+            
+            # 수급분석 평가
+            if row['수급분석'] >= 23:
+                reasons.append(f"✅ **강력한 수급** (외국인 비율 {row['외국인비율']:.1f}% - 기관/외국인 매수세 우세)")
+            elif row['수급분석'] >= 18:
+                reasons.append(f"✓ 양호한 수급 (외국인 {row['외국인비율']:.1f}%)")
+            
+            # 기술적분석 평가
+            if row['기술적분석'] >= 15:
+                reasons.append("✅ **우수한 기술적 신호** (이평선 정배열 및 RSI 적정 구간)")
+            elif row['기술적분석'] >= 12:
+                reasons.append("✓ 양호한 기술적 흐름")
+            
+            # 모멘텀 평가
+            if row['모멘텀'] >= 7:
+                reasons.append("✅ **강한 모멘텀** (거래량 급증 - 시장 관심도 상승)")
+            elif row['모멘텀'] >= 5:
+                reasons.append("✓ 거래량 증가세")
+            
+            # 종합 평가
+            if row['총점'] >= 85:
+                summary = "🌟 **종합평가**: 재무, 밸류, 수급, 기술 전 부문 우수. 중장기 투자 최적 종목"
+            elif row['총점'] >= 75:
+                summary = "⭐ **종합평가**: 대부분 지표 우수. 안정적 투자 가능"
+            else:
+                summary = "✓ **종합평가**: 전반적으로 양호. 단기 트레이딩 유리"
+            
+            if not reasons:
+                reasons.append("종합 점수가 상위권에 위치")
+            
+            with st.expander(f"**{row['순위']}위. {row['종목명']}** ({row['등급']}등급, 총점: {row['총점']:.1f}점)"):
+                st.markdown(f"### 📊 선정 이유")
+                for reason in reasons:
+                    st.markdown(f"- {reason}")
+                st.markdown(f"\n{summary}")
+                
+                st.markdown("---")
+                st.markdown("### 📈 상세 점수")
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("재무지표", f"{row['재무지표']:.1f}/25")
+                    st.metric("가치평가", f"{row['가치평가']:.1f}/15")
+                with col2:
+                    st.metric("수급분석", f"{row['수급분석']:.1f}/30")
+                    st.metric("기술적분석", f"{row['기술적분석']:.1f}/20")
+                with col3:
+                    st.metric("모멘텀", f"{row['모멘텀']:.1f}/10")
+                    st.write(f"**PER**: {row['PER']:.1f} | **PBR**: {row['PBR']:.2f} | **ROE**: {row['ROE']:.1f}%")
+                    st.write(f"**EPS**: {row['EPS']:,.0f}원 | **외국인**: {row['외국인비율']:.1f}%")

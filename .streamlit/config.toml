@@ -1,0 +1,6 @@
+[server]
+headless = true
+# Port is managed by the hosting environment; keep default but include as hint
+port = 8501
+enableCORS = false
+enableXsrfProtection = false

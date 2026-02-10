@@ -7,3 +7,5 @@ pillow
 python-dotenv
 pykrx
 matplotlib
+yfinance
+plotly

@@ -18,6 +18,13 @@ Streamlit Community Cloud에 배포하기
 2. "New app" → GitHub 리포지토리 선택 → 브랜치 `main` 선택
 3. `File in repository`에 `streamlit_app.py` 경로를 입력하고 "Deploy" 클릭
 
+또한 CI에서 Docker 이미지를 자동으로 빌드하여 GitHub Container Registry(GHCR)에 푸시하도록 설정했습니다.
+
+- 이미지 레퍼런스: `ghcr.io/<owner>/<repo>:latest` 및 `ghcr.io/<owner>/<repo>:<short-sha>`
+- 자동 릴리즈: main 브랜치 푸시 시 `v-<short-sha>` 태그로 GitHub Release가 생성됩니다.
+
+참고: GHCR에 푸시된 이미지는 기본적으로 퍼블릭 또는 프라이빗 설정에 따라 접근 권한이 달라집니다. 조직/레포 설정에서 패키지 권한을 확인하세요.
+
 참고
 - 타임스탬프는 KST(Asia/Seoul)로 표시됩니다.
 - 당일 최저/최고일 때 메인 환율 숫자 색상이 바뀝니다 (최저: 짙은 하늘색, 최고: 빨간색).

@@ -1,0 +1,24 @@
+[
+  {
+    "drwNo": 1,
+    "drwNoDate": "2002-12-07",
+    "drwtNo1": 10,
+    "drwtNo2": 23,
+    "drwtNo3": 29,
+    "drwtNo4": 33,
+    "drwtNo5": 37,
+    "drwtNo6": 40,
+    "bnusNo": 7
+  },
+  {
+    "drwNo": 2,
+    "drwNoDate": "2002-12-14",
+    "drwtNo1": 1,
+    "drwtNo2": 2,
+    "drwtNo3": 3,
+    "drwtNo4": 4,
+    "drwtNo5": 5,
+    "drwtNo6": 6,
+    "bnusNo": 9
+  }
+]

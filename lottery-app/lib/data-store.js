@@ -49,11 +49,24 @@ async function load(type) {
     try {
       const table = type === 'lotto' ? 'lotto' : 'pension'
       const orderCol = type === 'lotto' ? 'drwno' : 'round'
-      const { data, error } = await supabase.from(table).select('*').order(orderCol, { ascending: true })
-      if (error) throw error
-      if (!Array.isArray(data)) return []
+      // Supabase default page limit = 1000. Paginate to fetch ALL rows.
+      const PAGE = 1000
+      let all = []
+      let from = 0
+      while (true) {
+        const { data, error } = await supabase
+          .from(table)
+          .select('*')
+          .order(orderCol, { ascending: true })
+          .range(from, from + PAGE - 1)
+        if (error) throw error
+        if (!Array.isArray(data) || data.length === 0) break
+        all = all.concat(data)
+        if (data.length < PAGE) break   // last page
+        from += PAGE
+      }
       // Remap lotto rows from DB lowercase to camelCase; pension rows are fine as-is.
-      return type === 'lotto' ? data.map(fromLottoRow) : data
+      return type === 'lotto' ? all.map(fromLottoRow) : all
     } catch (e) {
       console.error('Supabase load error', e)
       // fallback to filesystem

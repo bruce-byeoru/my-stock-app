@@ -1,0 +1,7 @@
+{
+  "buildCommand": "cd lottery-app && npm install && npm run build",
+  "outputDirectory": "lottery-app/.next",
+  "installCommand": "cd lottery-app && npm install",
+  "devCommand": "cd lottery-app && npm run dev",
+  "framework": "nextjs"
+}

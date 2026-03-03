@@ -1,0 +1,870 @@
+"""
+저평가 우량주 발굴 앱 — KIS Open API + pykrx
+멀티팩터 스코어링: 저PBR + 고ROE + 고배당 + 재무건전성
+"""
+
+import streamlit as st
+import pandas as pd
+import requests
+import re
+import time
+import os
+from datetime import datetime
+
+import plotly.express as px
+import plotly.graph_objects as go
+from bs4 import BeautifulSoup
+from dotenv import load_dotenv
+import yfinance as yf
+
+load_dotenv()
+
+st.set_page_config(
+    page_title="저평가 우량주 발굴기",
+    page_icon="📈",
+    layout="wide",
+)
+
+# ────────────────────────────────────────────────
+# 상수
+# ────────────────────────────────────────────────
+KIS_BASE_URL = "https://openapi.koreainvestment.com:9443"
+
+# 멀티팩터 가중치 (합계 = 1.0)
+WEIGHTS = {
+    "pbr_score": 0.25,
+    "roe_score": 0.30,
+    "div_score": 0.20,
+    "per_score": 0.15,
+    "bps_score": 0.10,
+}
+
+# ────────────────────────────────────────────────
+# KIS API 함수
+# ────────────────────────────────────────────────
+
+@st.cache_data(ttl=82800, show_spinner="🔑 KIS 액세스 토큰 발급 중...")
+def get_kis_token(app_key: str, app_secret: str) -> str:
+    """APP Key + APP Secret → Access Token (유효기간 ~24h, 캐시 저장)"""
+    url = f"{KIS_BASE_URL}/oauth2/tokenP"
+    body = {
+        "grant_type": "client_credentials",
+        "appkey": app_key,
+        "appsecret": app_secret,
+    }
+    resp = requests.post(url, json=body, timeout=10)
+    resp.raise_for_status()
+    data = resp.json()
+    return data.get("access_token", "")
+
+
+def kis_headers(token: str, tr_id: str, app_key: str, app_secret: str) -> dict:
+    return {
+        "content-type": "application/json; charset=utf-8",
+        "authorization": f"Bearer {token}",
+        "appkey": app_key,
+        "appsecret": app_secret,
+        "tr_id": tr_id,
+    }
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def get_stock_detail(ticker: str, token: str, app_key: str, app_secret: str) -> dict:
+    """KIS API — 종목 현재가 + PER, PBR, EPS, BPS 등 상세 조회"""
+    url = f"{KIS_BASE_URL}/uapi/domestic-stock/v1/quotations/inquire-price"
+    headers = kis_headers(token, "FHKST01010100", app_key, app_secret)
+    params = {"fid_cond_mrkt_div_code": "J", "fid_input_iscd": ticker}
+    try:
+        resp = requests.get(url, headers=headers, params=params, timeout=8)
+        resp.raise_for_status()
+        output = resp.json().get("output", {})
+        return output
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def get_stock_finance(ticker: str, token: str, app_key: str, app_secret: str) -> dict:
+    """KIS API — 종목 재무비율 조회 (ROE, 부채비율 등)"""
+    url = f"{KIS_BASE_URL}/uapi/domestic-stock/v1/finance/financial-ratio"
+    headers = kis_headers(token, "FHPST01850000", app_key, app_secret)
+    params = {
+        "fid_cond_mrkt_div_code": "J",
+        "fid_input_iscd": ticker,
+        "fid_div_cls_code": "0",
+    }
+    try:
+        resp = requests.get(url, headers=headers, params=params, timeout=8)
+        resp.raise_for_status()
+        output = resp.json().get("output", [])
+        if isinstance(output, list) and len(output) > 0:
+            return output[0]
+        return {}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+# ────────────────────────────────────────────────
+# 네이버 금융 전체 종목 스캔
+# ────────────────────────────────────────────────
+
+_NAVER_POST_URL = "https://finance.naver.com/sise/field_submit.nhn"
+_NAVER_GET_URL  = "https://finance.naver.com/sise/sise_market_sum.nhn"
+_NAVER_HEADERS  = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Referer": "https://finance.naver.com/sise/sise_market_sum.nhn",
+}
+# POST에서 요청할 필드: 시가총액, PER, PBR, ROE, 배당금, 외국인비율
+_FIELD_IDS = ["market_sum", "per", "pbr", "roe", "dividend", "frgn_rate"]
+# 헤더 순서: N, 종목명, 현재가, 전일비, 등락률, 액면가, 시총, 배당금, 외국인비율, PER, ROE, PBR, 토론
+_COL_IDX = {"티커": 1, "현재가": 2, "시가총액(억)": 6, "배당금": 7, "외국인비율": 8, "PER": 9, "ROE": 10, "PBR": 11}
+
+
+def _parse_page(soup: BeautifulSoup, market: str) -> list:
+    """하나의 시세표 페이지 파싱 → 행 리스트 반환"""
+    table = soup.select_one("table.type_2")
+    if not table:
+        return []
+
+    rows = []
+    for tr in table.select("tr"):
+        tds = tr.select("td")
+        if len(tds) < 12:
+            continue
+        a = tds[1].select_one("a")
+        if not a:
+            continue
+
+        name = a.get_text(strip=True)
+        href = a.get("href", "")
+        m = re.search(r"code=(\d{6})", href)
+        if not m:
+            continue
+        ticker = m.group(1)
+
+        def _f(i):
+            txt = tds[i].get_text(strip=True).replace(",", "").replace("%", "")
+            try:
+                return float(txt)
+            except ValueError:
+                return None
+
+        price     = _f(2)
+        mktcap    = _f(6)
+        dividend  = _f(7)   # 보통주 배당금(원)
+        frgn_rate = _f(8)
+        per       = _f(9)
+        roe       = _f(10)
+        pbr       = _f(11)
+
+        # 배당수익률(%) = 배당금 / 현재가 * 100
+        div_yield = round(dividend / price * 100, 2) if (dividend and price and price > 0) else 0.0
+
+        rows.append({
+            "종목명":      name,
+            "티커":        ticker,
+            "시장":        market,
+            "현재가":      price,
+            "시가총액(억)": mktcap,
+            "배당금":      dividend or 0,
+            "DIV":         div_yield,
+            "외국인비율":  frgn_rate or 0,
+            "PER":         per,
+            "ROE":         roe,
+            "PBR":         pbr,
+        })
+    return rows
+
+
+@st.cache_data(ttl=3600, show_spinner="📊 네이버 금융 전체 종목 수집 중... (1~3분 소요)")
+def load_market_fundamentals(markets: list) -> pd.DataFrame:
+    """
+    네이버 금융 시가총액 시세표 전체 페이지 스크래핑
+    KOSPI: sosok=0 / KOSDAQ: sosok=1
+    """
+    SOSOK = {"KOSPI": 0, "KOSDAQ": 1}
+    all_rows = []
+
+    for market in markets:
+        sosok = SOSOK.get(market, 0)
+        session = requests.Session()
+        session.headers.update(_NAVER_HEADERS)
+
+        # 1) POST로 필드 세션 쿠키 설정 + 1페이지 HTML 받기
+        post_data = {
+            "menu": "market_sum",
+            "fieldIds": _FIELD_IDS,
+            "returnUrl": f"{_NAVER_GET_URL}?sosok={sosok}",
+        }
+        try:
+            resp = session.post(_NAVER_POST_URL, data=post_data, timeout=20)
+        except Exception as e:
+            st.warning(f"{market} 1페이지 요청 실패: {e}")
+            continue
+
+        soup = BeautifulSoup(resp.text, "html.parser")
+        all_rows.extend(_parse_page(soup, market))
+
+        # 2) 페이지 순차 수집 — 빈 결과가 나올 때까지 계속 (페이지 수 제한 없음)
+        page = 2
+        consecutive_empty = 0
+        while True:
+            try:
+                r = session.get(_NAVER_GET_URL, params={"sosok": sosok, "page": page}, timeout=15)
+                s = BeautifulSoup(r.text, "html.parser")
+                page_rows = _parse_page(s, market)
+                if not page_rows:
+                    consecutive_empty += 1
+                    if consecutive_empty >= 2:   # 2페이지 연속 빈 결과면 종료
+                        break
+                else:
+                    consecutive_empty = 0
+                    all_rows.extend(page_rows)
+                page += 1
+                time.sleep(0.12)  # 서버 부하 방지
+            except Exception as e:
+                st.warning(f"{market} {page}페이지 수집 실패: {e}")
+                page += 1
+                if page > 500:   # 안전 상한
+                    break
+                continue
+
+    if not all_rows:
+        return pd.DataFrame()
+    return pd.DataFrame(all_rows)
+
+
+# ────────────────────────────────────────────────
+# 멀티팩터 스코어링
+# ────────────────────────────────────────────────
+
+def normalize(series: pd.Series, ascending=True) -> pd.Series:
+    """Min-Max 정규화 → 0~100 점수. ascending=False면 낮을수록 고점"""
+    mn, mx = series.min(), series.max()
+    if mx == mn:
+        return pd.Series(50.0, index=series.index)
+    norm = (series - mn) / (mx - mn) * 100
+    return norm if ascending else (100 - norm)
+
+
+def compute_scores(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    각 팩터를 0~100으로 정규화 후 가중합산 → 종합 점수
+    - PBR: 낮을수록 좋음 (저평가)
+    - ROE: 높을수록 좋음 (수익성)
+    - DIV(배당수익률): 높을수록 좋음
+    - PER: 낮을수록 좋음
+    - 외국인비율: 높을수록 좋음 (기관·외국인 선호 = 검증된 우량주)
+    """
+    df = df.copy()
+    # 이상값 제거 (자본잠식/부실 기업 방어)
+    df = df[(df["PBR"] > 0) & (df["PBR"] < 50)]
+    df = df[(df["PER"] > 0) & (df["PER"] < 200)]
+    # ROE 상한 200% 하드가드: 자본잠식 근접 기업은 분모(자기자본)가 거의 0이어서
+    # ROE가 수백~수천%로 폭등하는 왜곡이 발생함 → 제거
+    df = df[df["ROE"].notna() & (df["ROE"] > 0) & (df["ROE"] <= 200)]
+
+    df["pbr_score"] = normalize(df["PBR"],       ascending=False)
+    df["roe_score"] = normalize(df["ROE"],        ascending=True)
+    df["div_score"] = normalize(df["DIV"],        ascending=True)
+    df["per_score"] = normalize(df["PER"],        ascending=False)
+    df["frgn_score"]= normalize(df["외국인비율"], ascending=True)
+
+    # 가중치 키 업데이트 (bps_score → frgn_score)
+    w = {
+        "pbr_score":  WEIGHTS.get("pbr_score",  0.25),
+        "roe_score":  WEIGHTS.get("roe_score",  0.30),
+        "div_score":  WEIGHTS.get("div_score",  0.20),
+        "per_score":  WEIGHTS.get("per_score",  0.15),
+        "frgn_score": WEIGHTS.get("bps_score",  0.10),
+    }
+    df["종합점수"] = sum(df[col] * wt for col, wt in w.items())
+    df["종합점수"] = df["종합점수"].round(1)
+
+    return df.sort_values("종합점수", ascending=False)
+
+
+# ────────────────────────────────────────────────
+# 적정주가 계산 (ROE & PBR 활용, 블로그 방법론)
+# ────────────────────────────────────────────────
+
+def calc_fair_price(current_price: float, pbr: float, roe: float, required_return: float = 0.10) -> int:
+    """
+    BPS = 현재가 / PBR (근사)
+    적정 PBR = ROE / 요구수익률
+    적정주가  = BPS × 적정 PBR
+    (출처: https://m.blog.naver.com/press02/224159493093)
+    """
+    if not (current_price and pbr and roe and required_return > 0 and pbr > 0):
+        return 0
+    bps = current_price / pbr
+    fair_pbr = (roe / 100) / required_return
+    return round(bps * fair_pbr)
+
+
+# ────────────────────────────────────────────────
+# Streamlit UI
+# ────────────────────────────────────────────────
+
+# ── 사이드바 ──────────────────────────────────────
+with st.sidebar:
+    st.title("⚙️ 설정")
+
+    st.subheader("🔑 KIS API 인증")
+    app_key = st.text_input(
+        "APP Key", value=os.getenv("KIS_APP_KEY", ""), type="password", key="app_key"
+    )
+    app_secret = st.text_input(
+        "APP Secret", value=os.getenv("KIS_APP_SECRET", ""), type="password", key="app_secret"
+    )
+
+    if app_key and app_secret:
+        st.success("API 키 입력 완료")
+    else:
+        st.info(".env 파일에 KIS_APP_KEY / KIS_APP_SECRET을 설정하거나 위에 직접 입력하세요.")
+
+    st.divider()
+    st.subheader("🔍 1차 필터 (시장 전체 스캔)")
+
+    markets = st.multiselect(
+        "대상 시장",
+        ["KOSPI", "KOSDAQ"],
+        default=["KOSPI", "KOSDAQ"],
+    )
+
+    mktcap_min = st.slider("최소 시가총액 (억원)", 0, 10000, 1000, 500)
+    roe_max = st.slider("ROE 상한 (%) — 초과 시 자본잠식 의심", 20, 300, 80)
+
+    st.markdown("**코스피 필터**")
+    pbr_max = st.slider("PBR 상한", 0.1, 10.0, 1.5, 0.1)
+    per_max = st.slider("PER 상한", 1, 200, 30)
+    roe_min = st.slider("ROE 최소 (%)", 0, 40, 8)
+    div_min = st.slider("배당수익률 최소 (%)", 0.0, 10.0, 0.0, 0.5)
+
+    st.markdown("**코스닥 전용 필터** (코스닥 선택 시 적용)")
+    kosdaq_pbr_max = st.slider("코스닥 PBR 상한", 0.1, 20.0, 5.0, 0.5)
+    kosdaq_per_max = st.slider("코스닥 PER 상한", 1, 500, 80)
+    kosdaq_roe_min = st.slider("코스닥 ROE 최소 (%)", 0, 40, 5)
+    kosdaq_div_min = st.slider("코스닥 배당수익률 최소 (%)", 0.0, 10.0, 0.0, 0.5)
+
+    st.divider()
+    st.subheader("⚖️ 팩터 가중치")
+
+    w_pbr = st.slider("저PBR 가중치", 0, 50, 25) / 100
+    w_roe = st.slider("고ROE 가중치", 0, 50, 30) / 100
+    w_div = st.slider("고배당 가중치", 0, 50, 20) / 100
+    w_per = st.slider("저PER 가중치", 0, 50, 15) / 100
+    w_frgn = st.slider("외국인비율 가중치", 0, 50, 10) / 100
+    total_w = w_pbr + w_roe + w_div + w_per + w_frgn
+    if abs(total_w - 1.0) > 0.01:
+        st.warning(f"가중치 합계: {total_w:.2f} (1.0이 되도록 조정 권장)")
+    WEIGHTS.update({
+        "pbr_score": w_pbr, "roe_score": w_roe, "div_score": w_div,
+        "per_score": w_per, "bps_score": w_frgn,
+    })
+
+    st.divider()
+    required_return = st.slider("요구수익률 (적정주가 계산용, %)", 5, 20, 10) / 100
+    st.caption(f"데이터: 네이버 금융 실시간 | 기준: {datetime.today().strftime('%Y-%m-%d')}")
+
+    scan_btn = st.button("🚀 종목 스캔 시작", type="primary", use_container_width=True)
+
+
+# ── 메인 화면 ──────────────────────────────────────
+st.title("📈 저평가 우량주 발굴기")
+st.caption("네이버 금융 실시간 데이터 + KIS API | 멀티팩터 스코어링: 저PBR + 고ROE + 고배당")
+
+tab_scan, tab_detail, tab_guide = st.tabs(["🔎 종목 스캔", "🏢 개별 종목 분석", "📖 분석 가이드"])
+
+# ── 탭1: 종목 스캔 ──────────────────────────────────
+with tab_scan:
+    if scan_btn:
+        if not markets:
+            st.error("대상 시장을 1개 이상 선택하세요.")
+            st.stop()
+
+        with st.spinner("📥 네이버 금융 전체 종목 수집 중... (최초 실행 시 1~3분 소요)"):
+            raw_df = load_market_fundamentals(markets)
+
+        if raw_df.empty:
+            st.error("데이터를 가져올 수 없습니다. 잠시 후 다시 시도하거나 새로고침 후 재시도하세요.")
+            st.stop()
+
+        st.info(f"전체 {len(raw_df):,}개 종목 수집 완료 → 필터 적용 중...")
+
+        # 1차 필터 — 시장별 다른 기준 적용
+        # 공통 필터: 시가총액 최소 + ROE 상한 (자본잠식 의심 종목 제거)
+        common_mask = (
+            raw_df["시가총액(억)"].notna() & (raw_df["시가총액(억)"] >= mktcap_min) &
+            raw_df["ROE"].notna() & (raw_df["ROE"] <= roe_max)  # 비정상 고ROE = 자본잠식 의심
+        )
+        kospi_mask = (
+            common_mask &
+            (raw_df["시장"] == "KOSPI") &
+            raw_df["PBR"].notna() & (raw_df["PBR"] > 0) & (raw_df["PBR"] <= pbr_max) &
+            raw_df["PER"].notna() & (raw_df["PER"] > 0) & (raw_df["PER"] <= per_max) &
+            (raw_df["ROE"] >= roe_min) &
+            (raw_df["DIV"] >= div_min)
+        )
+        kosdaq_mask = (
+            common_mask &
+            (raw_df["시장"] == "KOSDAQ") &
+            raw_df["PBR"].notna() & (raw_df["PBR"] > 0) & (raw_df["PBR"] <= kosdaq_pbr_max) &
+            raw_df["PER"].notna() & (raw_df["PER"] > 0) & (raw_df["PER"] <= kosdaq_per_max) &
+            (raw_df["ROE"] >= kosdaq_roe_min) &
+            (raw_df["DIV"] >= kosdaq_div_min)
+        )
+        filtered = raw_df[kospi_mask | kosdaq_mask].copy()
+
+        if filtered.empty:
+            st.warning("조건에 맞는 종목이 없습니다. 필터 조건을 완화하세요.")
+            st.stop()
+
+        st.success(f"✅ {len(filtered)}개 종목 통과 → 멀티팩터 점수 계산 중...")
+
+        # 멀티팩터 스코어링
+        scored = compute_scores(filtered)
+
+        # 적정주가 계산 (BPS = 현재가/PBR 근사)
+        scored["적정주가(원)"] = scored.apply(
+            lambda r: calc_fair_price(r["현재가"], r["PBR"], r["ROE"], required_return), axis=1
+        )
+
+        # 종목 랭킹 저장 (탭2에서 사용)
+        st.session_state["scored_df"] = scored
+
+        # ── 결과 헤드라인 ──
+        col1, col2, col3, col4 = st.columns(4)
+        top = scored.head(1).iloc[0]
+        col1.metric("🥇 1위 종목", top["종목명"], f"점수 {top['종합점수']}")
+        col2.metric("통과 종목 수", f"{len(scored)}개", f"전체 {len(raw_df):,}개 중")
+        col3.metric("평균 PBR", f"{scored['PBR'].mean():.2f}")
+        col4.metric("평균 ROE", f"{scored['ROE'].mean():.1f}%")
+
+        st.divider()
+
+        # ── 상위 50개 테이블 ──
+        st.subheader("🏆 종합 점수 상위 종목")
+
+        display_cols = ["종목명", "시장", "티커", "종합점수", "PBR", "ROE", "DIV", "PER", "외국인비율", "현재가", "시가총액(억)", "적정주가(원)"]
+        display_df = scored[display_cols].head(50).reset_index(drop=True)
+        display_df.index += 1
+
+        def color_score(val):
+            if val >= 70:
+                return "background-color: #1a7f4b; color: white"
+            elif val >= 50:
+                return "background-color: #4caf7d; color: white"
+            elif val >= 30:
+                return "background-color: #fff3cd"
+            return ""
+
+        styled = display_df.style.map(color_score, subset=["종합점수"]).format({
+            "PBR": "{:.2f}",
+            "ROE": "{:.1f}%",
+            "DIV": "{:.2f}%",
+            "PER": "{:.1f}",
+            "외국인비율": "{:.1f}%",
+            "현재가": "{:,.0f}원",
+            "시가총액(억)": "{:,.0f}",
+            "적정주가(원)": "{:,.0f}",
+            "종합점수": "{:.1f}",
+        })
+
+        st.dataframe(styled, use_container_width=True, height=600)
+
+        # ── 차트 ──────────────────────────────────────────
+        st.divider()
+        st.subheader("📊 시각화")
+
+        chart_df = scored.head(30)
+
+        col_a, col_b = st.columns(2)
+
+        with col_a:
+            st.markdown("**ROE vs PBR 산점도** (버블 크기 = 배당수익률)")
+            fig_scatter = px.scatter(
+                chart_df,
+                x="PBR", y="ROE",
+                size="DIV",
+                color="종합점수",
+                hover_name="종목명",
+                text="종목명",
+                color_continuous_scale="RdYlGn",
+                title="이상적 위치: 좌상단 (저PBR + 고ROE)",
+                labels={"PBR": "PBR (낮을수록 저평가)", "ROE": "ROE % (높을수록 우량)"},
+            )
+            fig_scatter.update_traces(textposition="top center", textfont_size=9)
+            fig_scatter.add_shape(
+                type="line", x0=0, x1=pbr_max, y0=roe_min, y1=roe_min,
+                line=dict(color="gray", dash="dash"), name="ROE 기준선"
+            )
+            fig_scatter.add_shape(
+                type="line", x0=1.0, x1=1.0, y0=chart_df["ROE"].min(), y1=chart_df["ROE"].max(),
+                line=dict(color="blue", dash="dot"), name="PBR=1.0"
+            )
+            st.plotly_chart(fig_scatter, use_container_width=True)
+
+        with col_b:
+            st.markdown("**상위 20종목 종합 점수 막대차트**")
+            top20 = scored.head(20).sort_values("종합점수")
+            fig_bar = px.bar(
+                top20,
+                x="종합점수", y="종목명",
+                orientation="h",
+                color="종합점수",
+                color_continuous_scale="RdYlGn",
+                text="종합점수",
+                title="종합점수 상위 20종목",
+            )
+            fig_bar.update_traces(texttemplate="%{text:.1f}", textposition="outside")
+            fig_bar.update_layout(showlegend=False, yaxis={"categoryorder": "total ascending"})
+            st.plotly_chart(fig_bar, use_container_width=True)
+
+        # ── 레이더 차트 (상위 5개 비교) ──────────────────────
+        st.subheader("🕸️ 상위 5종목 팩터 레이더 차트")
+        categories = ["저PBR", "고ROE", "고배당", "저PER", "외국인비율"]
+        factor_cols = ["pbr_score", "roe_score", "div_score", "per_score", "frgn_score"]
+
+        fig_radar = go.Figure()
+        colors = ["#e63946", "#2a9d8f", "#e9c46a", "#457b9d", "#a8dadc"]
+        for i, (_, row) in enumerate(scored.head(5).iterrows()):
+            vals = [row[c] for c in factor_cols]
+            vals += vals[:1]
+            fig_radar.add_trace(go.Scatterpolar(
+                r=vals,
+                theta=categories + [categories[0]],
+                fill="toself",
+                name=row["종목명"],
+                line_color=colors[i],
+            ))
+        fig_radar.update_layout(
+            polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
+            showlegend=True,
+            height=450,
+        )
+        st.plotly_chart(fig_radar, use_container_width=True)
+
+        # ── 다운로드 ──────────────────────────────────────
+        st.divider()
+        today_str = datetime.today().strftime("%Y%m%d")
+        csv = scored[display_cols].to_csv(index=False, encoding="utf-8-sig")
+        st.download_button(
+            "📥 전체 결과 CSV 다운로드",
+            data=csv,
+            file_name=f"저평가우량주_{today_str}.csv",
+            mime="text/csv",
+        )
+
+    else:
+        st.info("👈 왼쪽 사이드바에서 조건을 설정하고 **[종목 스캔 시작]** 버튼을 누르세요.")
+        st.markdown("""
+        ### 분석 팩터 및 가중치
+        | 팩터 | 기본 가중치 | 의미 |
+        |---|---|---|
+        | **저PBR** | 25% | 자산 대비 주가 저평가 (PBR < 1.0 = 해산 가치 이하) |
+        | **고ROE** | 30% | 주주 자본 효율성 (워런 버핏 핵심 지표) |
+        | **고배당** | 20% | 배당수익률 — 꾸준한 현금 환원 |
+        | **저PER** | 15% | 이익 대비 주가 저평가 |
+        | **외국인비율** | 10% | 외국인·기관 선호도 — 글로벌 우량주 검증 지표 |
+        
+        ### 적정주가 계산법 (ROE & PBR)
+        ```
+        적정 PBR = ROE / 요구수익률
+        적정주가 = BPS × 적정 PBR
+        ```
+        예) ROE 15%, BPS 10,000원, 요구수익률 10%  
+        → 적정 PBR = 1.5 → 적정주가 = **15,000원**
+        """)
+
+
+# ── 탭2: 개별 종목 분석 ──────────────────────────────
+with tab_detail:
+    st.subheader("🏢 개별 종목 KIS API 상세 분석")
+
+    if not app_key or not app_secret:
+        st.warning("KIS API 키를 사이드바에 입력해야 개별 종목 상세 분석이 가능합니다.")
+    else:
+        col_input, col_search = st.columns([2, 1])
+        with col_input:
+            ticker_input = st.text_input("종목 코드 (6자리)", placeholder="예) 005930 (삼성전자)")
+        with col_search:
+            detail_btn = st.button("🔍 상세 조회", type="primary")
+
+        # 스캔 결과에서 선택하는 옵션
+        if "scored_df" in st.session_state:
+            st.markdown("또는 **스캔 결과에서 선택:**")
+            scored_df = st.session_state["scored_df"]
+            options = [f"{row['종목명']} ({row['티커']})" for _, row in scored_df.head(30).iterrows()]
+            selected_option = st.selectbox("스캔 상위 30종목", ["선택하세요..."] + options)
+            if selected_option != "선택하세요...":
+                ticker_input = selected_option.split("(")[-1].replace(")", "").strip()
+
+        if detail_btn or (ticker_input and len(ticker_input) == 6):
+            if not ticker_input or len(ticker_input) != 6:
+                st.error("6자리 종목 코드를 입력하세요.")
+            else:
+                with st.spinner(f"🔑 토큰 발급 및 {ticker_input} 데이터 조회 중..."):
+                    try:
+                        token = get_kis_token(app_key, app_secret)
+                    except Exception as e:
+                        st.error(f"토큰 발급 실패: {e}")
+                        st.stop()
+
+                    price_data = get_stock_detail(ticker_input, token, app_key, app_secret)
+                    finance_data = get_stock_finance(ticker_input, token, app_key, app_secret)
+
+                if "error" in price_data and not price_data.get("stck_prpr"):
+                    st.error(f"현재가 조회 실패: {price_data['error']}")
+                else:
+                    # 헤더
+                    name = price_data.get("hts_kor_isnm", ticker_input)
+                    current_price = int(price_data.get("stck_prpr", 0))
+                    change_rate = float(price_data.get("prdy_ctrt", 0))
+                    st.markdown(f"## {name} `{ticker_input}`")
+                    delta_str = f"{change_rate:+.2f}%"
+                    st.metric("현재가", f"{current_price:,}원", delta_str)
+
+                    st.divider()
+
+                    # 핵심 지표
+                    per = float(price_data.get("per", 0) or 0)
+                    pbr = float(price_data.get("pbr", 0) or 0)
+                    eps = int(float(price_data.get("eps", 0) or 0))
+                    bps = int(float(price_data.get("bps", 0) or 0))
+                    # KIS API에서 BPS가 있으면 직접 사용, 없으면 현재가/PBR 근사
+                    if bps > 0 and eps > 0:
+                        roe_calc = round(eps / bps * 100, 2)
+                        fair_price = round(bps * (roe_calc / 100) / required_return) if required_return > 0 else 0
+                    elif pbr > 0:
+                        roe_calc = 0.0
+                        fair_price = calc_fair_price(current_price, pbr, roe_calc, required_return)
+                    else:
+                        roe_calc = 0.0
+                        fair_price = 0
+                    margin = round((fair_price - current_price) / current_price * 100, 1) if current_price > 0 else 0
+
+                    c1, c2, c3, c4, c5 = st.columns(5)
+                    c1.metric("PBR", f"{pbr:.2f}")
+                    c2.metric("PER", f"{per:.1f}")
+                    c3.metric("EPS", f"{eps:,}원")
+                    c4.metric("BPS", f"{bps:,}원")
+                    c5.metric("ROE (추정)", f"{roe_calc:.1f}%")
+
+                    st.divider()
+
+                    # 적정주가
+                    col_fair, col_margin = st.columns(2)
+                    with col_fair:
+                        st.markdown("### 🎯 적정주가 분석")
+                        st.markdown(f"""
+                        | 항목 | 값 |
+                        |---|---|
+                        | **현재주가** | {current_price:,}원 |
+                        | **적정주가** (ROE/요구수익률 × BPS) | **{fair_price:,}원** |
+                        | **안전마진** | **{margin:+.1f}%** |
+                        | 요구수익률 | {required_return*100:.0f}% |
+                        """)
+                        if margin > 20:
+                            st.success(f"✅ 현재가가 적정주가 대비 {margin:.1f}% 저평가 — 매력적")
+                        elif margin > 0:
+                            st.info(f"ℹ️ 현재가가 적정주가 대비 {margin:.1f}% 저평가")
+                        elif margin > -20:
+                            st.warning(f"⚠️ 현재가가 적정주가 대비 {abs(margin):.1f}% 고평가")
+                        else:
+                            st.error(f"🔴 현재가가 적정주가 대비 {abs(margin):.1f}% 고평가 — 주의")
+
+                    with col_margin:
+                        # 적정주가 vs 현재가 게이지
+                        fig_gauge = go.Figure(go.Indicator(
+                            mode="gauge+number+delta",
+                            value=current_price,
+                            delta={"reference": fair_price, "relative": True, "valueformat": ".1%"},
+                            title={"text": "현재가 vs 적정주가"},
+                            gauge={
+                                "axis": {"range": [0, max(current_price, fair_price) * 1.5]},
+                                "bar": {"color": "#2a9d8f"},
+                                "steps": [
+                                    {"range": [0, fair_price * 0.8], "color": "#1a7f4b"},
+                                    {"range": [fair_price * 0.8, fair_price], "color": "#4caf7d"},
+                                    {"range": [fair_price, fair_price * 1.2], "color": "#fff3cd"},
+                                    {"range": [fair_price * 1.2, max(current_price, fair_price) * 1.5], "color": "#f4cccc"},
+                                ],
+                                "threshold": {"line": {"color": "red", "width": 3}, "value": fair_price},
+                            },
+                            number={"suffix": "원", "valueformat": ","},
+                        ))
+                        fig_gauge.update_layout(height=300)
+                        st.plotly_chart(fig_gauge, use_container_width=True)
+
+                    # ── 주가 차트 (yfinance) ──────────────────────────────
+                    st.divider()
+                    st.subheader("📈 주가 차트 (최근 1년)")
+
+                    # 코스피/코스닥 판별: session_state의 scored_df에서 확인
+                    market_suffix = ".KS"  # 기본값 KOSPI
+                    if "scored_df" in st.session_state:
+                        _sdf = st.session_state["scored_df"]
+                        _match = _sdf[_sdf["티커"] == ticker_input]
+                        if not _match.empty and _match.iloc[0]["시장"] == "KOSDAQ":
+                            market_suffix = ".KQ"
+
+                    yf_ticker = ticker_input + market_suffix
+                    try:
+                        hist = yf.download(yf_ticker, period="1y", progress=False, auto_adjust=True)
+                        if hist.empty:
+                            # .KS 실패 시 .KQ로 재시도
+                            alt_suffix = ".KQ" if market_suffix == ".KS" else ".KS"
+                            hist = yf.download(ticker_input + alt_suffix, period="1y", progress=False, auto_adjust=True)
+
+                        if not hist.empty:
+                            # 컬럼 평탄화 (MultiIndex 대응)
+                            if isinstance(hist.columns, pd.MultiIndex):
+                                hist.columns = hist.columns.get_level_values(0)
+
+                            chart_period = st.radio("기간", ["3개월", "6개월", "1년"], index=2, horizontal=True)
+                            days_map = {"3개월": 63, "6개월": 126, "1년": 252}
+                            hist_show = hist.tail(days_map[chart_period])
+
+                            fig_price = go.Figure()
+
+                            # 캔들차트
+                            fig_price.add_trace(go.Candlestick(
+                                x=hist_show.index,
+                                open=hist_show["Open"],
+                                high=hist_show["High"],
+                                low=hist_show["Low"],
+                                close=hist_show["Close"],
+                                name="주가",
+                                increasing_line_color="#e63946",
+                                decreasing_line_color="#457b9d",
+                            ))
+
+                            # 이동평균선
+                            for win, color, lbl in [(5, "#2a9d8f", "MA5"), (20, "#e9c46a", "MA20"), (60, "#f4a261", "MA60")]:
+                                ma = hist_show["Close"].rolling(win).mean()
+                                fig_price.add_trace(go.Scatter(
+                                    x=hist_show.index, y=ma, name=lbl,
+                                    line=dict(color=color, width=1.5), opacity=0.85
+                                ))
+
+                            # 볼린저밴드
+                            bb_ma = hist_show["Close"].rolling(20).mean()
+                            bb_std = hist_show["Close"].rolling(20).std()
+                            fig_price.add_trace(go.Scatter(
+                                x=list(hist_show.index) + list(hist_show.index[::-1]),
+                                y=list(bb_ma + 2 * bb_std) + list((bb_ma - 2 * bb_std)[::-1]),
+                                fill="toself", fillcolor="rgba(150,100,200,0.1)",
+                                line=dict(color="rgba(150,100,200,0.3)"), name="볼린저밴드"
+                            ))
+
+                            fig_price.update_layout(
+                                height=450,
+                                xaxis_rangeslider_visible=False,
+                                legend=dict(orientation="h", yanchor="bottom", y=1.02),
+                                margin=dict(l=0, r=0, t=30, b=0),
+                                plot_bgcolor="#0e1117",
+                                paper_bgcolor="#0e1117",
+                                font_color="white",
+                                xaxis=dict(gridcolor="#333"),
+                                yaxis=dict(gridcolor="#333", tickformat=","),
+                            )
+                            st.plotly_chart(fig_price, use_container_width=True)
+
+                            # 거래량 차트
+                            vol_colors = ["#e63946" if c >= o else "#457b9d"
+                                          for c, o in zip(hist_show["Close"], hist_show["Open"])]
+                            fig_vol = go.Figure(go.Bar(
+                                x=hist_show.index, y=hist_show["Volume"],
+                                marker_color=vol_colors, name="거래량"
+                            ))
+                            fig_vol.update_layout(
+                                height=150, margin=dict(l=0, r=0, t=5, b=0),
+                                plot_bgcolor="#0e1117", paper_bgcolor="#0e1117",
+                                font_color="white",
+                                xaxis=dict(gridcolor="#333"),
+                                yaxis=dict(gridcolor="#333", tickformat=",.0f"),
+                                showlegend=False,
+                            )
+                            st.plotly_chart(fig_vol, use_container_width=True)
+                        else:
+                            st.info("주가 차트 데이터를 가져올 수 없습니다.")
+                    except Exception as e:
+                        st.info(f"주가 차트 로딩 실패: {e}")
+
+                    # KIS 재무비율 데이터
+                    if finance_data and "error" not in finance_data:
+                        st.divider()
+                        st.subheader("📊 KIS API 재무비율 (최근 결산)")
+                        fin_items = {
+                            "ROE": finance_data.get("roe", "-"),
+                            "부채비율": finance_data.get("lblt_rate", "-"),
+                            "영업이익률": finance_data.get("bsop_prfi_rate", "-"),
+                            "순이익률": finance_data.get("thtr_ntin_rate", "-"),
+                            "유동비율": finance_data.get("crnt_rate", "-"),
+                        }
+                        fin_df = pd.DataFrame({"항목": list(fin_items.keys()), "값": list(fin_items.values())})
+                        st.dataframe(fin_df, use_container_width=True, hide_index=True)
+                    else:
+                        st.info("💡 KIS API 재무비율 조회 제한 (일부 키 권한 필요). 기본 지표(PER·PBR·ROE)는 위에 표시됩니다.")
+
+
+# ── 탭3: 분석 가이드 ─────────────────────────────────
+with tab_guide:
+    st.subheader("📖 저평가 우량주 발굴 가이드")
+    st.markdown("""
+    ### 핵심 전략: 저PBR + 고ROE + 고배당
+    한국 정부 밸류업 정책 방향과 일치하며, 하방 경직성이 강해 장기 투자에 적합합니다.
+
+    ---
+
+    ### 지표별 의미
+
+    #### 1️⃣ PBR (주가순자산비율)
+    - **PBR = 현재주가 / BPS(주당순자산)**
+    - PBR < 1.0 → 기업이 해산해도 주주에게 돌아오는 자산이 현재 주가보다 많음
+    - **코리아 디스카운트**: 한국 주식은 글로벌 대비 PBR이 낮은 경향이 있어 기회가 될 수 있음
+
+    #### 2️⃣ ROE (자기자본이익률)
+    - **ROE = 순이익 / 자기자본 × 100** (또는 EPS / BPS × 100)
+    - ROE > 10~15% → 주주 자본을 효율적으로 활용하는 우량 기업
+    - 워런 버핏이 가장 강조하는 지표
+
+    #### 3️⃣ 적정주가 계산법
+    ```
+    적정 PBR = ROE(%) / 요구수익률(%)
+    적정주가  = BPS × 적정 PBR
+    ```
+    **예시**: ROE 15%, BPS 10,000원, 요구수익률 10%
+    - 적정 PBR = 15% / 10% = **1.5**
+    - 적정주가 = 10,000원 × 1.5 = **15,000원**
+    - 현재주가 10,000원이라면 → **50% 저평가 (안전마진 50%)**
+
+    #### 4️⃣ 배당수익률
+    - 꾸준히 배당을 늘려온 기업(배당성장주)은 장기 보유 시 실질 수익률이 복리로 증가
+    - 배당 + 주가상승 = 총 수익률
+
+    #### 5️⃣ 멀티팩터 종합점수
+    - 단일 지표의 함정을 피하기 위해 5개 팩터를 가중 합산
+    - PBR만 낮고 ROE가 낮은 기업 → 망해가는 기업일 수 있음 ⚠️
+    - **종합점수 70점 이상**: 강력 후보 🟢
+    - **50~70점**: 관심 종목 🟡
+    - **50점 미만**: 재검토 필요 🔴
+
+    ---
+
+    ### 2026년 유망 섹터 참고
+    | 섹터 | 이유 |
+    |---|---|
+    | 반도체 (HBM) | AI 수요 급증, 고부가가치 |
+    | AI 인프라 | 전력·냉각·데이터센터 |
+    | 방산 | 지정학적 리스크 수혜 |
+    | 조선 | LNG선·친환경 선박 |
+
+    ---
+
+    ### 데이터 출처
+    - **종목 재무지표 (PER·PBR·ROE·배당금·외국인비율)**: 네이버 금융 시가총액 시세표 실시간 수집
+    - **상세 재무데이터**: 한국투자증권 KIS Open API (실전투자)
+    - **적정주가 계산법**: [네이버 블로그 참고](https://m.blog.naver.com/press02/224159493093)
+    """)

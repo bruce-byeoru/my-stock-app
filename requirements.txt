@@ -9,3 +9,4 @@ pykrx
 matplotlib
 yfinance
 plotly
+finance-datareader

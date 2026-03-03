@@ -1,1 +1,4 @@
 .env
+lottery-app/node_modules/
+lottery-app/.next/
+__pycache__/

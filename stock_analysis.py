@@ -32,11 +32,146 @@ KIS_BASE_URL = "https://openapi.koreainvestment.com:9443"
 WEIGHTS = {
     "pbr_score":  0.20,
     "roe_score":  0.25,
-    "div_score":  0.15,
-    "per_score":  0.15,
-    "opm_score":  0.15,
-    "frgn_score": 0.10,
+    "div_score":  0.20,
+    "per_score":  0.10,
+    "opm_score":  0.05,
+    "frgn_score": 0.20,
 }
+
+# ── 6대 핵심 테마 ─────────────────────────────────────
+THEME_MAP = {
+    "🛡️ 방산 & 우주": {
+        "color": "#1B2A4A",
+        "insight": "국가 안보와 글로벌 전력 인프라의 핵심",
+        "keywords": [
+            "방산", "위성", "변압기", "전력설비", "전력", "한화에어로", "한화시스템",
+            "한국항공", "LIG넥스원", "풍산", "현대로템", "한전", "LS일렉트릭", "LS전선",
+            "HD현대일렉트릭", "일진전기", "대한전선", "제룡전기", "우주", "항공", "KAI",
+            "한화오션", "두산에너빌리티", "한전산업", "한전기술",
+        ],
+    },
+    "🧠 AI & 반도체": {
+        "color": "#6B21A8",
+        "insight": "인류의 지능을 확장하는 미래 연산 인프라",
+        "keywords": [
+            "HBM", "반도체", "SK하이닉스", "삼성전자", "리노공업", "ISC", "한미반도체",
+            "주성엔지니어링", "테스", "원익IPS", "유진테크", "피에스케이", "이오테크닉스",
+            "솔브레인", "동진쎄미켐", "디아이티", "AI", "인공지능", "GPU", "보안솔루션",
+            "네이버", "카카오", "NAVER", "소프트웨어", "칩스앤미디어", "에이디테크놀로지",
+        ],
+    },
+    "🤖 로봇 & 미래차": {
+        "color": "#EA580C",
+        "insight": "노동의 자동화와 이동의 혁명을 이끄는 동력",
+        "keywords": [
+            "감속기", "로봇", "자율주행", "ADAS", "레인보우로보틱스", "두산로보틱스",
+            "현대차", "기아", "현대모비스", "만도", "HL만도", "현대위아", "에스엘",
+            "모터", "자동차부품", "드론", "액추에이터", "센서", "라이다",
+        ],
+    },
+    "🔋 2차전지 & 친환경": {
+        "color": "#CA8A04",
+        "insight": "지속 가능한 지구를 위한 에너지 패러다임 전환",
+        "keywords": [
+            "양극재", "리튬", "전고체", "ESS", "배터리", "2차전지", "에코프로",
+            "엘앤에프", "포스코퓨처엠", "LG에너지솔루션", "에너지", "태양광",
+            "풍력", "수소", "음극재", "전해질", "분리막", "SK온", "씨아이에스",
+        ],
+    },
+    "🧬 바이오 & 웰니스": {
+        "color": "#DB2777",
+        "insight": "고령화 시대의 삶의 질을 높이는 헬스케어",
+        "keywords": [
+            "의료기기", "필러", "임플란트", "덴탈", "바이오", "제약", "셀트리온",
+            "삼성바이오", "SK바이오", "유한양행", "녹십자", "한미약품", "대웅제약",
+            "종근당", "메디톡스", "휴젤", "오스템", "덴티움", "레이", "디오",
+            "헬스케어", "진단", "의약", "CMO", "CDMO",
+        ],
+    },
+    "💰 고배당 & 인프라": {
+        "color": "#059669",
+        "insight": "흔들리지 않는 현금 흐름, 계좌의 든든한 버팀목",
+        "keywords": [
+            "맥쿼리", "리츠", "인프라",
+            "한국전력", "KT", "SK텔레콤", "LGU+", "가스", "통신",
+            "POSCO홀딩스", "포스코홀딩스",
+        ],
+    },
+    "🏦 금융/지주": {
+        "color": "#1E3A5F",
+        "insight": "경기 순환과 금리 변동 속 안정적 수익을 추구하는 금융 핵심 섹터",
+        "keywords": [
+            "금융지주", "KB금융", "신한지주", "하나금융", "우리금융", "기업은행",
+            "삼성화재", "현대해상", "DB손해보험", "보험", "지주",
+            "은행", "증권", "NH투자증권", "미래에셋", "한국투자", "키움증권",
+            "삼성증권", "대신증권", "메리츠", "한화투자", "카카오뱅크", "토스",
+        ],
+    },
+    "🏗️ 건설/자재": {
+        "color": "#6B4423",
+        "insight": "도시와 인프라를 만드는 산업의 뼈대, 경기 회복의 선행 지표",
+        "keywords": [
+            "건설", "시멘트", "철강", "현대건설", "대우건설", "GS건설",
+            "삼성물산", "포스코", "현대제철", "동국제강", "세아", "고려아연",
+            "한일시멘트", "쌍용C&E", "아세아시멘트", "삼표시멘트",
+            "HDC현대산업", "DL이앤씨", "대림", "태영건설",
+        ],
+    },
+    "🧪 화학/소재": {
+        "color": "#4A6741",
+        "insight": "산업의 원료를 공급하는 기초 소재, 글로벌 수요 사이클의 바로미터",
+        "keywords": [
+            "정유", "화학", "기초소재", "LG화학", "롯데케미칼", "한화솔루션",
+            "SKC", "SK이노베이션", "S-Oil", "GS칼텍스", "금호석유", "대한유화",
+            "OCI", "효성", "코오롱", "SK케미칼", "한화케미칼", "여천NCC",
+            "SK지오센트릭", "카프로",
+        ],
+    },
+    "🛒 유통/소비재": {
+        "color": "#C27BA0",
+        "insight": "소비 트렌드와 내수 경기를 반영하는 생활 밀착형 섹터",
+        "keywords": [
+            "음식료", "유통", "패션", "CJ제일제당", "오리온", "농심", "풀무원",
+            "삼양식품", "롯데쇼핑", "신세계", "이마트", "쿠팡", "GS리테일",
+            "BGF리테일", "F&F", "한섬", "LF", "무신사", "올리브영",
+            "아모레퍼시픽", "LG생활건강", "코스맥스", "한국콜마", "CJ올리브네",
+        ],
+    },
+}
+
+
+def classify_theme(name: str) -> str:
+    """종목명 기반 테마 분류 (첫 번째 매칭 테마 반환)"""
+    for theme, cfg in THEME_MAP.items():
+        for kw in cfg["keywords"]:
+            if kw in name:
+                return theme
+    return "📊 기타"
+
+
+def classify_grade(row) -> str:
+    """종목 등급 분류"""
+    margin    = row.get("안전마진(%)")
+    above200  = row.get("above_ma200")
+    roe       = row.get("ROE", 0) or 0
+    trade_val = row.get("avg_trade_val")  # 억원
+    trend_w   = row.get("trend_warn", False)
+
+    margin_ok = margin is not None and not (isinstance(margin, float) and pd.isna(margin))
+    has_margin_20 = margin_ok and margin > 20
+    has_neg_margin = margin_ok and margin < 0
+
+    # 💎 황금 알짜주: 안전마진 > 20% & 200일선 위
+    if has_margin_20 and above200 is True:
+        return "💎 황금 알짜주"
+    # 🚀 고성장 프리미엄주: 안전마진 < 0% 이더라도 ROE > 20%
+    if has_neg_margin and roe > 20:
+        return "🚀 고성장 프리미엄주"
+    # ⚠️ 저평가 소외주: 안전마진 > 20% BUT 거래대금 5억 미만 OR 하락추세
+    low_trade = trade_val is not None and not (isinstance(trade_val, float) and pd.isna(trade_val)) and trade_val < 5
+    if has_margin_20 and (low_trade or trend_w or above200 is False):
+        return "⚠️ 저평가 소외주"
+    return "—"
 
 
 @st.cache_data(ttl=82800, show_spinner="🔑 KIS 액세스 토큰 발급 중...")
@@ -216,12 +351,15 @@ def fetch_financial_depth(ticker, market):
     """
     empty = {
         "opm_avg3": None, "opm_list": [], "opm_no_loss": None,
-        "roe_w": None, "current_ratio": None, "icr": None,
+        "roe_w": None, "roe_avg3": None, "current_ratio": None, "icr": None,
+        "debt_ratio": None,
         "div_3yr": [], "div_3yr_ok": None, "div_growing": None,
         "div_payout": None, "div_payout_warn": False,
         "ocf_2yr": [], "ocf_ok": None,
         "listed_years": None, "ma200": None, "above_ma200": None,
         "return_6m": None, "trend_warn": False,
+        "frgn_net_5d": None,
+        "ma_cross_bearish": None, "avg_trade_val": None,
         "ok": False
     }
     try:
@@ -262,6 +400,7 @@ def fetch_financial_depth(ticker, market):
                 if roe_vals:
                     wts2 = wts[:len(roe_vals)]
                     result["roe_w"] = round(sum(v * w for v, w in zip(roe_vals, wts2)) / sum(wts2), 1)
+                    result["roe_avg3"] = round(sum(roe_vals) / len(roe_vals), 1)
 
         # ── 유동비율 ────────────────────────────────────────
         if bs is not None and "Current Assets" in bs.index and "Current Liabilities" in bs.index:
@@ -272,6 +411,18 @@ def fetch_financial_depth(ticker, market):
                 lat = common[0]
                 if float(cl[lat]) != 0:
                     result["current_ratio"] = round(float(ca[lat]) / float(cl[lat]) * 100, 1)
+
+        # ── 부채비율 ───────────────────────────────────────
+        if bs is not None and "Common Stock Equity" in bs.index:
+            tl_key = next((k for k in bs.index if "Total Liabilities" in k), None)
+            eq_dr = bs.loc["Common Stock Equity"].dropna().sort_index(ascending=False)
+            if tl_key:
+                tl = bs.loc[tl_key].dropna().sort_index(ascending=False)
+                common_dr = tl.index.intersection(eq_dr.index)
+                if len(common_dr) > 0:
+                    lat_dr = common_dr[0]
+                    if float(eq_dr[lat_dr]) > 0:
+                        result["debt_ratio"] = round(float(tl[lat_dr]) / float(eq_dr[lat_dr]) * 100, 1)
 
         # ── 이자보상배율 ──────────────────────────────────────
         if "EBIT" in fin.index and "Interest Expense" in fin.index:
@@ -359,6 +510,18 @@ def fetch_financial_depth(ticker, market):
                     # 추세 경고: 200일선 하향 OR 6개월 -20% 이상 언더퍼폼
                     if result["above_ma200"] is False or (ret6m <= -20):
                         result["trend_warn"] = True
+                # 20/60/120일선 역배열 감지
+                if len(close) >= 120:
+                    _ma20  = float(close.rolling(20).mean().iloc[-1])
+                    _ma60  = float(close.rolling(60).mean().iloc[-1])
+                    _ma120 = float(close.rolling(120).mean().iloc[-1])
+                    result["ma_cross_bearish"] = (_ma120 > _ma60 > _ma20)
+                # 5일 평균 거래대금 (억원)
+                if "Volume" in hist.columns and len(close) >= 5:
+                    vol5 = hist["Volume"].tail(5)
+                    cls5 = close.tail(5)
+                    trade_val = (vol5 * cls5).mean() / 1e8
+                    result["avg_trade_val"] = round(trade_val, 1)
         except Exception:
             pass
 
@@ -368,11 +531,54 @@ def fetch_financial_depth(ticker, market):
         return empty
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_frgn_trend_5d(ticker):
+    """외국인 순매수 5일 추세 (네이버 금융)"""
+    url = f"https://finance.naver.com/item/frgn.naver?code={ticker}"
+    try:
+        resp = requests.get(url, headers=_NAVER_HEADERS, timeout=8)
+        soup = BeautifulSoup(resp.text, "html.parser")
+        table = soup.select_one("table.type2")
+        if not table:
+            return None
+        net_buys = []
+        for tr in table.select("tr"):
+            tds = tr.select("td")
+            if len(tds) < 9:
+                continue
+            date_text = tds[0].get_text(strip=True)
+            if not re.match(r"\d{4}\.\d{2}\.\d{2}", date_text):
+                continue
+            try:
+                net_text = tds[5].get_text(strip=True).replace(",", "").replace("+", "")
+                if not net_text or net_text == "-":
+                    continue
+                net_buy = int(net_text)
+                net_buys.append(net_buy)
+            except (ValueError, IndexError):
+                continue
+            if len(net_buys) >= 5:
+                break
+        if not net_buys:
+            return None
+        total = sum(net_buys)
+        if total > 0:
+            return "🔺"
+        elif total < 0:
+            return "🔻"
+        else:
+            return "➖"
+    except Exception:
+        return None
+
+
 _DEPTH_COLS = [
-    "opm_avg3", "opm_list", "opm_no_loss", "roe_w", "current_ratio", "icr",
+    "opm_avg3", "opm_list", "opm_no_loss", "roe_w", "roe_avg3",
+    "current_ratio", "icr", "debt_ratio",
     "div_3yr", "div_3yr_ok", "div_growing", "div_payout", "div_payout_warn",
     "ocf_2yr", "ocf_ok",
     "listed_years", "ma200", "above_ma200", "return_6m", "trend_warn",
+    "frgn_net_5d", "ma_cross_bearish", "avg_trade_val",
 ]
 
 
@@ -384,7 +590,14 @@ def batch_fetch_financials(df, progress_placeholder):
     for i, (idx, row) in enumerate(df.iterrows()):
         d = fetch_financial_depth(row["티커"], row["시장"])
         for col in _DEPTH_COLS:
+            if col == "frgn_net_5d":
+                continue
             df.at[idx, col] = d.get(col)
+        # 외국인 5일 수급 추세
+        try:
+            df.at[idx, "frgn_net_5d"] = fetch_frgn_trend_5d(row["티커"])
+        except Exception:
+            df.at[idx, "frgn_net_5d"] = None
         progress_placeholder.progress(
             (i + 1) / total,
             text=f"📊 심층 분석 중... {i+1}/{total} ({row['종목명']})"
@@ -393,15 +606,21 @@ def batch_fetch_financials(df, progress_placeholder):
 
 
 def normalize(series, ascending=True):
-    mn, mx = series.min(), series.max()
-    if mx == mn:
+    s = pd.to_numeric(series, errors="coerce")
+    mn, mx = s.min(), s.max()
+    if pd.isna(mn) or pd.isna(mx) or mx == mn:
         return pd.Series(50.0, index=series.index)
-    norm = (series - mn) / (mx - mn) * 100
-    return norm if ascending else (100 - norm)
+    norm = (s - mn) / (mx - mn) * 100
+    return (norm if ascending else (100 - norm)).fillna(50.0)
 
 
 def compute_scores(df, w):
     df = df.copy()
+    df["PBR"] = pd.to_numeric(df["PBR"], errors="coerce")
+    df["PER"] = pd.to_numeric(df["PER"], errors="coerce")
+    df["ROE"] = pd.to_numeric(df["ROE"], errors="coerce")
+    df["DIV"] = pd.to_numeric(df["DIV"], errors="coerce").fillna(0)
+    df["외국인비율"] = pd.to_numeric(df["외국인비율"], errors="coerce").fillna(0)
     df = df[(df["PBR"] > 0) & (df["PBR"] < 50)]
     df = df[(df["PER"] > 0) & (df["PER"] < 200)]
     df = df[df["ROE"].notna() & (df["ROE"] > 0) & (df["ROE"] <= 200)]
@@ -441,7 +660,24 @@ def compute_scores(df, w):
     if "above_ma200" in df.columns:
         df.loc[df["above_ma200"] == True,  "종합점수"] += 3   # 200일선 위 가점
 
+    # 20/60/120 역배열 -10 감점
+    if "ma_cross_bearish" in df.columns:
+        df.loc[df["ma_cross_bearish"] == True, "종합점수"] -= 10
+
     df["종합점수"] = df["종합점수"].clip(0, 100).round(1)
+
+    # 테마 분류
+    df["테마"] = df["종목명"].apply(classify_theme)
+
+    # 섹터(테마)별 PBR 평균 대비 저평가 가점
+    theme_pbr_mean = df.groupby("테마")["PBR"].transform("mean")
+    df.loc[df["PBR"] < theme_pbr_mean, "종합점수"] = (df.loc[df["PBR"] < theme_pbr_mean, "종합점수"] + 5).clip(0, 100)
+
+    # 섹터 내 순위
+    df["섹터내순위"] = df.groupby("테마")["종합점수"].rank(ascending=False, method="min").astype(int)
+    theme_cnt = df.groupby("테마")["종합점수"].transform("count").astype(int)
+    df["섹터순위표시"] = df["섹터내순위"].astype(str) + "/" + theme_cnt.astype(str)
+
     # 태그 부여
     df["태그"] = df.apply(assign_tag, axis=1)
     return df.sort_values("종합점수", ascending=False)
@@ -540,26 +776,34 @@ with st.sidebar:
         icr_min           = st.slider("이자보상배율 최소 (배)", 0.0, 20.0, 3.0, 0.5,
             help="3배 이상: 영업이익으로 이자를 3배 이상 감당.")
         apply_cr_icr      = st.checkbox("유동비율/이자보상배율 필터 적용", value=True)
+        debt_ratio_max    = st.slider("부채비율 상한 (%)", 0, 500, 150, 10,
+            help="150% 이하: 재무 건전성 양호. 배율이 높을수록 부채 의존도 높음.")
+        apply_debt_ratio  = st.checkbox("부채비율 필터 적용", value=True,
+            help="부채비율 상한 초과 종목 제외. 데이터 없으면 통과.")
         st.markdown("**하드 필터 (데이터 없으면 통과)**")
-        require_div_3yr  = st.checkbox("3년 연속 배당 미지급 종목 제외", value=False,
+        require_div_3yr  = st.checkbox("3년 연속 배당 미지급 종목 제외", value=True,
             help="배당 이력이 확인된 경우에만 필터 적용. 데이터 없으면 통과.")
         require_ocf_ok   = st.checkbox("영업현금흐름 2년 연속 음수 제외", value=True,
             help="2년 연속 영업CF 음수 종목 제외. 데이터 없으면 통과.")
         require_listing  = st.checkbox("상장 2년 미만 종목 제외", value=True,
             help="상장 기간이 짧아 재무 신뢰도가 낮은 종목 제외.")
+        require_roe_avg3 = st.checkbox("최근 3년 평균 ROE 8% 이상", value=True,
+            help="3년 평균 ROE가 8% 미만인 종목 제외. 일회성 이익 왕곡 방지. 데이터 없으면 통과.")
     else:
         kospi_opm_min = 0.0; kosdaq_opm_min = 0.0; require_opm_no_loss = False
         current_ratio_min = 0; icr_min = 0.0; apply_cr_icr = False
+        debt_ratio_max = 500; apply_debt_ratio = False
         require_div_3yr = False; require_ocf_ok = False; require_listing = False
+        require_roe_avg3 = False
 
     st.divider()
     st.subheader("⚖️ 팩터 가중치")
     w_pbr  = st.slider("저PBR  가중치",          0, 50, 20) / 100
     w_roe  = st.slider("고ROE  가중치 (3년 가중)", 0, 50, 25) / 100
-    w_div  = st.slider("고배당 가중치",           0, 50, 15) / 100
-    w_per  = st.slider("저PER  가중치",           0, 50, 15) / 100
-    w_opm  = st.slider("고OPM  가중치",           0, 50, 15) / 100
-    w_frgn = st.slider("외국인비율 가중치",        0, 50, 10) / 100
+    w_div  = st.slider("고배당 가중치",           0, 50, 20) / 100
+    w_per  = st.slider("저PER  가중치",           0, 50, 10) / 100
+    w_opm  = st.slider("고OPM  가중치",           0, 50, 5) / 100
+    w_frgn = st.slider("외국인비율 가중치",        0, 50, 20) / 100
     total_w = w_pbr + w_roe + w_div + w_per + w_opm + w_frgn
     if abs(total_w - 1.0) > 0.01:
         st.warning(f"가중치 합계: {total_w:.2f} (1.0 권장)")
@@ -666,6 +910,17 @@ with tab_scan:
                 filtered = filtered[filtered.apply(_cr_icr_ok, axis=1)]
                 st.success(f"✅ 유동비율/이자보상배율 필터: {b4}개 → {len(filtered)}개")
 
+            # 부채비율 필터
+            if apply_debt_ratio:
+                def _debt_ok(row):
+                    dr = row.get("debt_ratio")
+                    if dr is None or (isinstance(dr, float) and pd.isna(dr)):
+                        return True
+                    return dr <= debt_ratio_max
+                b4 = len(filtered)
+                filtered = filtered[filtered.apply(_debt_ok, axis=1)]
+                st.success(f"✅ 부채비율 필터 (≤{debt_ratio_max}%): {b4}개 → {len(filtered)}개")
+
             # 하드필터: 3년 연속 배당
             if require_div_3yr:
                 def _div_ok(row):
@@ -695,8 +950,19 @@ with tab_scan:
                 b4 = len(filtered)
                 filtered = filtered[filtered.apply(_listing_ok, axis=1)]
                 st.success(f"✅ 상장기간 필터: {b4}개 → {len(filtered)}개")
+
+            # 하드필터: 최근 3년 평균 ROE 8% 이상
+            if require_roe_avg3:
+                def _roe_avg3_ok(row):
+                    v = row.get("roe_avg3")
+                    if v is None or (isinstance(v, float) and pd.isna(v)):
+                        return True
+                    return float(v) >= 8.0
+                b4 = len(filtered)
+                filtered = filtered[filtered.apply(_roe_avg3_ok, axis=1)]
+                st.success(f"✅ 3년 평균 ROE ≥ 8% 필터: {b4}개 → {len(filtered)}개")
         else:
-            for col in ["opm_avg3", "roe_w", "opm_no_loss", "current_ratio", "icr"]:
+            for col in ["opm_avg3", "roe_w", "roe_avg3", "opm_no_loss", "current_ratio", "icr", "debt_ratio"]:
                 filtered[col] = None
 
         if filtered.empty:
@@ -705,9 +971,19 @@ with tab_scan:
 
         # Stage 3: 스코어링
         scored = compute_scores(filtered, weights_cfg)
+        # 시총 기반 유연 요구수익률: 10조 이상 대형주 8%, 일반 10%
         scored["적정주가(원)"] = scored.apply(
-            lambda r: calc_fair_price(r["현재가"], r["PBR"], r["ROE"], required_return), axis=1
+            lambda r: calc_fair_price(
+                r["현재가"], r["PBR"], r["ROE"],
+                0.08 if (r.get("시가총액(억)") or 0) >= 100000 else required_return
+            ), axis=1
         )
+        scored["안전마진(%)"] = scored.apply(
+            lambda r: round((r["적정주가(원)"] - r["현재가"]) / r["적정주가(원)"] * 100, 1)
+            if r.get("적정주가(원)") and r["적정주가(원)"] > 0 else None, axis=1
+        )
+        # 등급 분류
+        scored["등급"] = scored.apply(classify_grade, axis=1)
 
         st.session_state["scored_df"]    = scored
         st.session_state["scan_time"]    = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -742,137 +1018,144 @@ with tab_scan:
                 f"{scored['icr'].mean():.1f}배" if scored["icr"].notna().any() else "N/A")
             c8.metric("가중ROE 계산된 종목", f"{scored['roe_w'].notna().sum()}개")
 
+        # ── 카드+테이블 렌더링 헬퍼 ──────────────────────────
+        def _render_cards_and_table(df_subset, container, theme_key=None, show_insight=True):
+            """카드 + 테이블 렌더링"""
+            with container:
+                if show_insight and theme_key and theme_key in THEME_MAP:
+                    _cfg = THEME_MAP[theme_key]
+                    st.markdown(
+                        f'<div style="background:{_cfg["color"]};padding:10px 16px;border-radius:8px;'
+                        f'margin-bottom:10px;"><span style="font-size:14px;color:white;">'
+                        f'💡 <b>Insight</b>: {_cfg["insight"]}</span></div>',
+                        unsafe_allow_html=True,
+                    )
+                if df_subset.empty:
+                    st.info("해당 조건에 맞는 종목이 없습니다.")
+                    return
+
+                st.caption(f"총 **{len(df_subset)}**개 종목")
+
+                # 상위 5종목 카드
+                _top = df_subset.head(5)
+                _card_cols = st.columns(min(len(_top), 5))
+                for ci, (_, crow) in enumerate(_top.iterrows()):
+                    with _card_cols[ci]:
+                        _frgn_arrow = crow.get("frgn_net_5d") or ""
+                        _card_fair = crow.get("적정주가(원)", 0) or 0
+                        _card_price = crow.get("현재가", 0) or 0
+                        _card_margin = crow.get("안전마진(%)")
+                        if _card_margin is None or (isinstance(_card_margin, float) and pd.isna(_card_margin)):
+                            _card_margin = round((_card_fair - _card_price) / _card_fair * 100, 1) if _card_fair > 0 else None
+                        _card_margin_str = f"{_card_margin:+.1f}%" if _card_margin is not None else "N/A"
+                        _sect_rank = crow.get("섹터순위표시", "") if "섹터순위표시" in crow.index else ""
+                        _card_grade = crow.get("등급", "") if "등급" in crow.index else ""
+                        _margin_color = "#1a7f4b" if (_card_margin or 0) > 0 else "#e63946"
+                        _opacity = "0.45" if crow.get("above_ma200") is False else "1.0"
+                        st.markdown(f"""
+<div style="border:1px solid #555; border-radius:12px; padding:12px; text-align:center;
+            background:linear-gradient(135deg,#1a1a2e,#16213e); min-height:280px; opacity:{_opacity}; color:white;">
+    <div style="font-size:11px;color:#ddd;">{_card_grade}</div>
+    <h4 style="margin:4px 0;font-size:15px;color:white;">{_frgn_arrow} {crow['종목명']}</h4>
+    <div style="font-size:26px;font-weight:bold;color:#2a9d8f;">{crow['종합점수']:.1f}<span style="font-size:13px;">점</span></div>
+    <div style="font-size:12px;color:white;">현재가 <b>{_card_price:,.0f}</b>원</div>
+    <div style="font-size:12px;color:white;">적정가 <b>{_card_fair:,.0f}</b>원</div>
+    <div style="font-size:14px;font-weight:bold;color:{_margin_color};">안전마진 {_card_margin_str}</div>
+    <div style="font-size:11px;color:#eee;">PBR {crow['PBR']:.2f} · ROE {crow['ROE']:.1f}% · DIV {crow['DIV']:.1f}%</div>
+    <div style="font-size:11px;color:#99bbff;">섹터 {_sect_rank}</div>
+</div>
+                        """, unsafe_allow_html=True)
+
+                # 테이블 (전체 종목)
+                _tag_col = ["등급", "테마"] if "등급" in df_subset.columns else []
+                base_cols = _tag_col + [
+                    "종목명", "시장", "티커", "종합점수", "섹터순위표시",
+                    "PBR", "ROE", "DIV", "PER", "외국인비율",
+                    "현재가", "시가총액(억)", "적정주가(원)", "안전마진(%)",
+                ]
+                base_cols_safe = [c for c in base_cols if c in df_subset.columns]
+                tbl = df_subset[base_cols_safe].copy().reset_index(drop=True)
+
+                # 외국인 수급 화살표
+                if was_deep and "frgn_net_5d" in df_subset.columns:
+                    arrows = df_subset["frgn_net_5d"].fillna("").values
+                    tbl["종목명"] = [
+                        f"{a} {n}" if a else n
+                        for n, a in zip(tbl["종목명"].values, arrows)
+                    ]
+
+                if was_deep:
+                    for _ec, _sc in [("OPM_3yr(%)", "opm_avg3"), ("ROE_가중(%)", "roe_w"),
+                                     ("유동비율(%)", "current_ratio"), ("이자보상배율", "icr"),
+                                     ("부채비율(%)", "debt_ratio"), ("ROE_3yr평균(%)", "roe_avg3")]:
+                        if _sc in df_subset.columns:
+                            tbl[_ec] = df_subset[_sc].values
+                    if "above_ma200" in df_subset.columns:
+                        tbl["200일선"] = df_subset["above_ma200"].map(
+                            lambda x: "🔼위" if x is True else ("🔽아래" if x is False else "-")).values
+                    if "ma_cross_bearish" in df_subset.columns:
+                        tbl["MA역배열"] = df_subset["ma_cross_bearish"].map(
+                            lambda x: "⚠️역배열" if x is True else ("✅정배열" if x is False else "-")).values
+
+                tbl.index += 1
+                fmt = {
+                    "PBR": "{:.2f}", "ROE": "{:.1f}%", "DIV": "{:.2f}%", "PER": "{:.1f}",
+                    "외국인비율": "{:.1f}%", "현재가": "{:,.0f}원",
+                    "시가총액(억)": "{:,.0f}", "적정주가(원)": "{:,.0f}",
+                    "종합점수": "{:.1f}", "안전마진(%)": "{:+.1f}",
+                }
+                if was_deep:
+                    fmt.update({"OPM_3yr(%)": "{:.1f}", "ROE_가중(%)": "{:.1f}",
+                                "유동비율(%)": "{:.0f}", "이자보상배율": "{:.1f}",
+                                "부채비율(%)": "{:.0f}", "ROE_3yr평균(%)": "{:.1f}"})
+
+                def _color_score(val):
+                    if val >= 70:   return "background-color: #1a7f4b; color: white"
+                    elif val >= 50: return "background-color: #4caf7d; color: white"
+                    elif val >= 30: return "background-color: #fff3cd"
+                    return ""
+
+                _tbl_height = min(len(tbl) * 35 + 50, 800)
+                st.dataframe(
+                    tbl.style.map(_color_score, subset=["종합점수"]).format(fmt, na_rep="-"),
+                    use_container_width=True, height=_tbl_height,
+                )
+
+        # ── 🏅 섹터 테마별 탭 ───────────────────────────────
         st.divider()
-        st.subheader("🏆 종합 점수 상위 종목")
+        st.subheader("🏅 섹터 테마별 종목")
+        _theme_labels = list(THEME_MAP.keys()) + ["📊 기타", "📋 전체"]
+        theme_tabs = st.tabs(_theme_labels)
 
-        # ── 시장별 필터 라디오 버튼 ──────────────────────────
-        _avail_markets = sorted(scored["시장"].unique().tolist())
-        _mkt_opts = ["전체"] + _avail_markets
-        _mkt_sel  = st.radio(
-            "📌 시장 필터", _mkt_opts, horizontal=True, index=0,
-            help="코스피 또는 코스닥만 필터링하거나 전체를 볼 수 있습니다."
-        )
-        scored_show = scored if _mkt_sel == "전체" else scored[scored["시장"] == _mkt_sel]
-        if scored_show.empty:
-            st.warning(f"{_mkt_sel} 종목이 없습니다. '전체'로 다시 선택하세요.")
-            scored_show = scored
+        for ti, tname in enumerate(_theme_labels):
+            if tname == "📋 전체":
+                _render_cards_and_table(scored, theme_tabs[ti])
+            elif tname == "📊 기타":
+                _tdf = scored[scored["테마"] == "📊 기타"] if "테마" in scored.columns else pd.DataFrame()
+                _render_cards_and_table(_tdf, theme_tabs[ti])
+            else:
+                _tdf = scored[scored["테마"] == tname] if "테마" in scored.columns else scored
+                _render_cards_and_table(_tdf, theme_tabs[ti], theme_key=tname)
 
-        _tag_col = ["태그"] if (was_deep and "태그" in scored_show.columns) else []
-        base_cols = _tag_col + ["종목명", "시장", "티커", "종합점수", "PBR", "ROE", "DIV", "PER",
-                     "외국인비율", "현재가", "시가총액(억)", "적정주가(원)"]
-        base_cols_safe = [c for c in base_cols if c in scored_show.columns]
-        display_df = scored_show[base_cols_safe].head(50).copy().reset_index(drop=True)
-        if was_deep:
-            display_df["OPM_3yr(%)"]    = scored_show["opm_avg3"].head(50).values    if "opm_avg3"       in scored_show.columns else None
-            display_df["ROE_가중(%)"]    = scored_show["roe_w"].head(50).values       if "roe_w"          in scored_show.columns else None
-            display_df["유동비율(%)"]    = scored_show["current_ratio"].head(50).values if "current_ratio" in scored_show.columns else None
-            display_df["이자보상배율"]   = scored_show["icr"].head(50).values         if "icr"            in scored_show.columns else None
-            if "div_3yr_ok" in scored_show.columns:
-                display_df["3년배당"] = scored_show["div_3yr_ok"].head(50).map(
-                    lambda x: "✅연속" if x is True else ("❌미지급" if x is False else "-")
-                ).values
-            if "div_growing" in scored_show.columns:
-                display_df["배당추이"] = scored_show["div_growing"].head(50).map(
-                    lambda x: "📈상승" if x is True else ("📉하락" if x is False else "-")
-                ).values
-            if "above_ma200" in scored_show.columns:
-                display_df["200일선"] = scored_show["above_ma200"].head(50).map(
-                    lambda x: "🔼위" if x is True else ("🔽아래" if x is False else "-")
-                ).values
-            # ── 평균 배당율(3년) ─────────────────────────────
-            if "div_3yr" in scored_show.columns:
-                def _avg_div_yield(r):
-                    try:
-                        vals = r["div_3yr"]
-                        if isinstance(vals, str):
-                            vals = eval(vals)
-                        price = float(r["현재가"]) if r["현재가"] else 0
-                        if vals and price > 0:
-                            nonzero = [float(v) for v in vals if v and float(v) > 0]
-                            if nonzero:
-                                return round(sum(nonzero) / len(nonzero) / price * 100, 2)
-                    except Exception:
-                        pass
-                    return None
-                display_df["평균배당율(%)"] = scored_show.head(50).apply(_avg_div_yield, axis=1).values
-        display_df.index += 1
+        # ── 🎖️ 등급별 탭 (독립) ─────────────────────────────
+        st.divider()
+        st.subheader("🎖️ 등급별 종목")
+        _grade_labels = ["💎 황금 알짜주", "🚀 고성장 프리미엄주", "⚠️ 저평가 소외주", "— 미분류", "📋 전체"]
+        grade_tabs = st.tabs(_grade_labels)
 
-        def color_score(val):
-            if val >= 70:   return "background-color: #1a7f4b; color: white"
-            elif val >= 50: return "background-color: #4caf7d; color: white"
-            elif val >= 30: return "background-color: #fff3cd"
-            return ""
-
-        fmt = {
-            "PBR": "{:.2f}", "ROE": "{:.1f}%", "DIV": "{:.2f}%", "PER": "{:.1f}",
-            "외국인비율": "{:.1f}%", "현재가": "{:,.0f}원",
-            "시가총액(억)": "{:,.0f}", "적정주가(원)": "{:,.0f}", "종합점수": "{:.1f}",
-        }
-        if was_deep:
-            fmt.update({"OPM_3yr(%)": "{:.1f}", "ROE_가중(%)": "{:.1f}",
-                        "유동비율(%)": "{:.0f}", "이자보상배율": "{:.1f}",
-                        "평균배당율(%)": "{:.2f}"})
-        st.dataframe(
-            display_df.style.map(color_score, subset=["종합점수"]).format(fmt, na_rep="-"),
-            use_container_width=True, height=600
-        )
-
-        # OPM 3년 추이 상세 (expander)
-        if was_deep and "opm_list" in scored_show.columns:
-            with st.expander("📋 상위 20종목 OPM 3년 추이 상세"):
-                opm_rows = []
-                for _, row in scored_show.head(20).iterrows():
-                    try:    vals = eval(str(row.get("opm_list", "[]")))
-                    except: vals = []
-                    entry = {
-                        "종목명": row["종목명"], "시장": row["시장"],
-                        "OPM평균(%)": row.get("opm_avg3"),
-                        "3년연속흑자": "✅" if row.get("opm_no_loss") else "❌" if row.get("opm_no_loss") is False else "-",
-                    }
-                    for j, v in enumerate(vals[:3]):
-                        entry[f"OPM Y{j+1}(%)"] = v
-                    opm_rows.append(entry)
-                opm_df = pd.DataFrame(opm_rows)
-                fmt2   = {c: "{:.1f}" for c in opm_df.columns if "OPM" in c}
-                st.dataframe(opm_df.style.format(fmt2, na_rep="-"),
-                             use_container_width=True, hide_index=True)
-
-        # 배당율 3년 추이 상세 (expander)
-        if was_deep and "div_3yr" in scored_show.columns:
-            with st.expander("📋 상위 20종목 배당율 3년 추이 상세"):
-                div_rows = []
-                for _, row in scored_show.head(20).iterrows():
-                    try:
-                        vals = row.get("div_3yr", [])
-                        if isinstance(vals, str):
-                            vals = eval(vals)
-                    except Exception:
-                        vals = []
-                    price = float(row.get("현재가") or 0)
-                    cur_yr = datetime.now().year
-                    entry = {
-                        "종목명":       row["종목명"],
-                        "시장":         row["시장"],
-                        "현재배당율(%)": row.get("DIV"),
-                        "3년연속배당":   "✅" if row.get("div_3yr_ok") is True else ("❌" if row.get("div_3yr_ok") is False else "-"),
-                        "배당추이":      "📈상승" if row.get("div_growing") is True else ("📉하락" if row.get("div_growing") is False else "-"),
-                    }
-                    yr_labels = [str(cur_yr - 1), str(cur_yr - 2), str(cur_yr - 3)]
-                    for j, v in enumerate(vals[:3]):
-                        yr = yr_labels[j]
-                        entry[f"{yr}배당(원)"]  = round(float(v), 0) if v else None
-                        entry[f"{yr}배당율(%)"] = round(float(v) / price * 100, 2) if (v and price > 0) else None
-                    div_rows.append(entry)
-                div_df  = pd.DataFrame(div_rows)
-                fmt_div = {c: "{:.2f}" for c in div_df.columns if "배당율" in c}
-                fmt_div.update({c: "{:,.0f}" for c in div_df.columns if "배당(원)" in c})
-                fmt_div["현재배당율(%)"] = "{:.2f}"
-                st.dataframe(div_df.style.format(fmt_div, na_rep="-"),
-                             use_container_width=True, hide_index=True)
+        for gi, glabel in enumerate(_grade_labels):
+            if glabel == "📋 전체":
+                _render_cards_and_table(scored, grade_tabs[gi])
+            elif glabel == "— 미분류":
+                _gdf = scored[scored["등급"] == "—"] if "등급" in scored.columns else pd.DataFrame()
+                _render_cards_and_table(_gdf, grade_tabs[gi])
+            else:
+                _gdf = scored[scored["등급"] == glabel] if "등급" in scored.columns else scored
+                _render_cards_and_table(_gdf, grade_tabs[gi])
 
         st.divider()
         st.subheader("📊 시각화")
-        chart_df = scored_show.head(30)
+        chart_df = scored.head(30)
 
         col_a, col_b = st.columns(2)
         with col_a:
@@ -887,7 +1170,7 @@ with tab_scan:
             st.plotly_chart(fig_sc, use_container_width=True)
         with col_b:
             st.markdown("**상위 20종목 종합 점수 막대차트**")
-            top20 = scored_show.head(20).sort_values("종합점수")
+            top20 = scored.head(20).sort_values("종합점수")
             fig_bar = px.bar(
                 top20, x="종합점수", y="종목명", orientation="h",
                 color="종합점수", color_continuous_scale="RdYlGn",
@@ -897,9 +1180,9 @@ with tab_scan:
             fig_bar.update_layout(showlegend=False, yaxis={"categoryorder": "total ascending"})
             st.plotly_chart(fig_bar, use_container_width=True)
 
-        if was_deep and "opm_avg3" in scored_show.columns and scored_show["opm_avg3"].notna().any():
+        if was_deep and "opm_avg3" in scored.columns and scored["opm_avg3"].notna().any():
             st.subheader("🫧 영업이익률(3년평균) vs ROE 산점도")
-            opm_chart = scored_show[scored_show["opm_avg3"].notna()].head(40)
+            opm_chart = scored[scored["opm_avg3"].notna()].head(40)
             roe_col = "roe_for_score" if "roe_for_score" in opm_chart.columns else "ROE"
             fig_opm = px.scatter(
                 opm_chart, x="opm_avg3", y=roe_col,
@@ -919,7 +1202,7 @@ with tab_scan:
         factor_cols = ["pbr_score", "roe_score", "div_score", "per_score", "opm_score", "frgn_score"]
         fig_radar   = go.Figure()
         colors      = ["#e63946", "#2a9d8f", "#e9c46a", "#457b9d", "#a8dadc", "#f4a261"]
-        for i, (_, row) in enumerate(scored_show.head(5).iterrows()):
+        for i, (_, row) in enumerate(scored.head(5).iterrows()):
             vals = [row.get(c, 50) for c in factor_cols]
             fig_radar.add_trace(go.Scatterpolar(
                 r=vals + vals[:1], theta=categories + [categories[0]],
@@ -935,8 +1218,8 @@ with tab_scan:
         today_str = datetime.today().strftime("%Y%m%d")
         dl_cols = [c for c in [
             "종목명","시장","티커","종합점수","PBR","ROE","DIV","PER","외국인비율",
-            "현재가","시가총액(억)","적정주가(원)",
-            "opm_avg3","roe_w","current_ratio","icr","opm_no_loss",
+            "현재가","시가총액(억)","적정주가(원)","안전마진(%)",
+            "opm_avg3","roe_w","roe_avg3","current_ratio","icr","debt_ratio","opm_no_loss",
         ] if c in scored.columns]
         csv = scored[dl_cols].to_csv(index=False, encoding="utf-8-sig")
         st.download_button("📥 전체 결과 CSV 다운로드", data=csv,
@@ -950,10 +1233,10 @@ with tab_scan:
         |---|---|---|
         | **저PBR** | 20% | 자산 대비 주가 저평가 |
         | **고ROE** (3년 가중) | 25% | Y0×0.5 + Y1×0.3 + Y2×0.2 → 꾸준한 실력 |
-        | **고OPM** (3년 평균) | 15% | 본업 수익성 — 일회성 이익 제거 |
-        | **고배당** | 15% | 배당수익률 |
-        | **저PER** | 15% | 이익 대비 주가 저평가 |
-        | **외국인비율** | 10% | 글로벌 우량주 검증 |
+        | **고OPM** (3년 평균) | 5% | 본업 수익성 — 일회성 이익 제거 |
+        | **고배당** | 20% | 배당수익률 (자녀 증여용 강화) |
+        | **저PER** | 10% | 이익 대비 주가 저평가 |
+        | **외국인비율** | 20% | 글로벌 우량주 검증 (비중 강화) |
 
         ### 심층 재무 필터 (가짜 우량주 제거)
         | 필터 | 기준 | 효과 |
@@ -1215,6 +1498,66 @@ with tab_detail:
                             st.info("주가 차트 데이터 없음.")
                     except Exception as e:
                         st.info(f"주가 차트 로딩 실패: {e}")
+
+                    # ── RS(상대강도) 차트: 종목 vs KOSPI ──────────────────
+                    st.divider()
+                    st.subheader("📐 상대강도(RS) 차트 — 종목 vs KOSPI")
+                    try:
+                        _rs_tick = ticker_input + mkt_suffix
+                        _rs_stock = yf.download(_rs_tick, period="6mo", progress=False, auto_adjust=True)
+                        _rs_kospi = yf.download("^KS11", period="6mo", progress=False, auto_adjust=True)
+                        if not _rs_stock.empty and not _rs_kospi.empty:
+                            if isinstance(_rs_stock.columns, pd.MultiIndex):
+                                _rs_stock.columns = _rs_stock.columns.get_level_values(0)
+                            if isinstance(_rs_kospi.columns, pd.MultiIndex):
+                                _rs_kospi.columns = _rs_kospi.columns.get_level_values(0)
+                            _rs_idx = _rs_stock.index.intersection(_rs_kospi.index)
+                            _s_ret  = _rs_stock.loc[_rs_idx, "Close"] / _rs_stock.loc[_rs_idx, "Close"].iloc[0]
+                            _k_ret  = _rs_kospi.loc[_rs_idx, "Close"] / _rs_kospi.loc[_rs_idx, "Close"].iloc[0]
+                            _rs_val = (_s_ret / _k_ret) * 100
+                            fig_rs = go.Figure()
+                            fig_rs.add_trace(go.Scatter(
+                                x=_rs_idx, y=_rs_val, mode="lines",
+                                name="RS (상대강도)", line=dict(color="#2a9d8f", width=2)))
+                            fig_rs.add_hline(y=100, line_dash="dash", line_color="gray",
+                                             annotation_text="KOSPI 동일 수준")
+                            fig_rs.update_layout(
+                                height=300, yaxis_title="RS 지수 (100=KOSPI 동일)",
+                                plot_bgcolor="#0e1117", paper_bgcolor="#0e1117", font_color="white",
+                                xaxis=dict(gridcolor="#333"), yaxis=dict(gridcolor="#333"),
+                                margin=dict(l=0,r=0,t=30,b=0),
+                            )
+                            st.plotly_chart(fig_rs, use_container_width=True)
+                            st.caption("RS > 100: KOSPI 대비 강세, RS < 100: KOSPI 대비 약세")
+                        else:
+                            st.info("RS 차트 데이터를 가져올 수 없습니다.")
+                    except Exception:
+                        st.info("RS 차트 로딩 실패.")
+
+                    # ── 현재가 vs 적정주가 괴리율 추이 ──────────────────
+                    if fair_price and fair_price > 0:
+                        try:
+                            if not _rs_stock.empty:
+                                _gap_close = _rs_stock["Close"].tail(90)
+                                _gap_ratio = ((_gap_close - fair_price) / fair_price * 100)
+                                fig_gap = go.Figure()
+                                fig_gap.add_trace(go.Scatter(
+                                    x=_gap_close.index, y=_gap_ratio, mode="lines",
+                                    name="괴리율(%)", line=dict(color="#e9c46a", width=2),
+                                    fill="tozeroy", fillcolor="rgba(233,196,106,0.15)"))
+                                fig_gap.add_hline(y=0, line_dash="dash", line_color="white",
+                                                  annotation_text="적정주가 수준")
+                                fig_gap.update_layout(
+                                    title="현재가 vs 적정주가 괴리율 추이 (3개월)",
+                                    height=280, yaxis_title="괴리율 (%)",
+                                    plot_bgcolor="#0e1117", paper_bgcolor="#0e1117", font_color="white",
+                                    xaxis=dict(gridcolor="#333"), yaxis=dict(gridcolor="#333"),
+                                    margin=dict(l=0,r=0,t=40,b=0),
+                                )
+                                st.plotly_chart(fig_gap, use_container_width=True)
+                                st.caption("0% 이상: 고평가 구간, 0% 이하: 저평가 구간")
+                        except Exception:
+                            pass
 
                     if finance_data and "error" not in finance_data:
                         st.divider()

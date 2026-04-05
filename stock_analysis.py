@@ -744,18 +744,18 @@ with st.sidebar:
     st.divider()
     st.subheader("🔍 1차 필터 (네이버 금융 스캔)")
     markets     = st.multiselect("대상 시장", ["KOSPI", "KOSDAQ"], default=["KOSPI", "KOSDAQ"])
-    mktcap_min  = st.slider("최소 시가총액 (억원)",            0, 10000, 1000, 500)
-    roe_max     = st.slider("ROE 상한 (%) — 초과 시 자본잠식 의심", 20, 300, 80)
+    mktcap_min  = st.number_input("최소 시가총액 (억원)",          min_value=0, max_value=10000, value=1000, step=500)
+    roe_max     = st.number_input("ROE 상한 (%) — 초과 시 자본잠식 의심", min_value=20, max_value=300, value=80, step=10)
     st.markdown("**코스피 필터**")
-    pbr_max     = st.slider("PBR 상한",           0.1,  10.0,  1.5, 0.1)
-    per_max     = st.slider("PER 상한",            1,    200,   30)
-    roe_min     = st.slider("ROE 최소 (%)",        0,     40,    8)
-    div_min     = st.slider("배당수익률 최소 (%)", 0.0,  10.0,  0.0, 0.5)
+    pbr_max     = st.number_input("PBR 상한",           min_value=0.1,  max_value=10.0,  value=1.5, step=0.1, format="%.1f")
+    per_max     = st.number_input("PER 상한",           min_value=1,    max_value=200,   value=30,  step=5)
+    roe_min     = st.number_input("ROE 최소 (%)",       min_value=0,    max_value=40,    value=8,   step=1)
+    div_min     = st.number_input("배당수익률 최소 (%)", min_value=0.0,  max_value=10.0,  value=0.0, step=0.5, format="%.1f")
     st.markdown("**코스닥 전용 필터**")
-    kosdaq_pbr_max = st.slider("코스닥 PBR 상한",           0.1, 20.0, 5.0, 0.5)
-    kosdaq_per_max = st.slider("코스닥 PER 상한",            1,   500,  80)
-    kosdaq_roe_min = st.slider("코스닥 ROE 최소 (%)",        0,    40,   5)
-    kosdaq_div_min = st.slider("코스닥 배당수익률 최소 (%)", 0.0, 10.0,  0.0, 0.5)
+    kosdaq_pbr_max = st.number_input("코스닥 PBR 상한",           min_value=0.1, max_value=20.0, value=5.0, step=0.5, format="%.1f")
+    kosdaq_per_max = st.number_input("코스닥 PER 상한",           min_value=1,   max_value=500,  value=80,  step=10)
+    kosdaq_roe_min = st.number_input("코스닥 ROE 최소 (%)",       min_value=0,   max_value=40,   value=5,   step=1)
+    kosdaq_div_min = st.number_input("코스닥 배당수익률 최소 (%)", min_value=0.0, max_value=10.0, value=0.0, step=0.5, format="%.1f")
 
     st.divider()
     st.subheader("🔬 심층 재무 분석 (yfinance)")
@@ -765,18 +765,18 @@ with st.sidebar:
     )
     if deep_enabled:
         st.markdown("**영업이익률(OPM) 필터**")
-        kospi_opm_min  = st.slider("코스피 OPM 최소 (%)",  0.0, 30.0,  5.0, 0.5,
+        kospi_opm_min  = st.number_input("코스피 OPM 최소 (%)",  min_value=0.0, max_value=30.0, value=5.0, step=0.5, format="%.1f",
             help="3년 평균 영업이익률 하한. 5% 미만은 원가 상승 시 적자 전환 위험.")
-        kosdaq_opm_min = st.slider("코스닥 OPM 최소 (%)", 0.0, 30.0,  8.0, 0.5,
+        kosdaq_opm_min = st.number_input("코스닥 OPM 최소 (%)", min_value=0.0, max_value=30.0, value=8.0, step=0.5, format="%.1f",
             help="성장 기술주는 8~10% 이상.")
         require_opm_no_loss = st.checkbox("3년 연속 영업적자 종목 제외", value=True)
         st.markdown("**재무 건전성 필터**")
-        current_ratio_min = st.slider("유동비율 최소 (%)",        0, 400,  150, 25,
+        current_ratio_min = st.number_input("유동비율 최소 (%)",        min_value=0, max_value=400, value=150, step=25,
             help="150% 이상: 단기 부채 상환 여력 충분.")
-        icr_min           = st.slider("이자보상배율 최소 (배)", 0.0, 20.0, 3.0, 0.5,
+        icr_min           = st.number_input("이자보상배율 최소 (배)", min_value=0.0, max_value=20.0, value=3.0, step=0.5, format="%.1f",
             help="3배 이상: 영업이익으로 이자를 3배 이상 감당.")
         apply_cr_icr      = st.checkbox("유동비율/이자보상배율 필터 적용", value=True)
-        debt_ratio_max    = st.slider("부채비율 상한 (%)", 0, 500, 150, 10,
+        debt_ratio_max    = st.number_input("부채비율 상한 (%)", min_value=0, max_value=500, value=150, step=10,
             help="150% 이하: 재무 건전성 양호. 배율이 높을수록 부채 의존도 높음.")
         apply_debt_ratio  = st.checkbox("부채비율 필터 적용", value=True,
             help="부채비율 상한 초과 종목 제외. 데이터 없으면 통과.")
@@ -798,12 +798,13 @@ with st.sidebar:
 
     st.divider()
     st.subheader("⚖️ 팩터 가중치")
-    w_pbr  = st.slider("저PBR  가중치",          0, 50, 20) / 100
-    w_roe  = st.slider("고ROE  가중치 (3년 가중)", 0, 50, 25) / 100
-    w_div  = st.slider("고배당 가중치",           0, 50, 20) / 100
-    w_per  = st.slider("저PER  가중치",           0, 50, 10) / 100
-    w_opm  = st.slider("고OPM  가중치",           0, 50, 5) / 100
-    w_frgn = st.slider("외국인비율 가중치",        0, 50, 20) / 100
+    st.caption("5% 단위로 조정됩니다.")
+    w_pbr  = st.slider("저PBR  가중치",          0, 50, 20, step=5) / 100
+    w_roe  = st.slider("고ROE  가중치 (3년 가중)", 0, 50, 25, step=5) / 100
+    w_div  = st.slider("고배당 가중치",           0, 50, 20, step=5) / 100
+    w_per  = st.slider("저PER  가중치",           0, 50, 10, step=5) / 100
+    w_opm  = st.slider("고OPM  가중치",           0, 50, 5,  step=5) / 100
+    w_frgn = st.slider("외국인비율 가중치",        0, 50, 20, step=5) / 100
     total_w = w_pbr + w_roe + w_div + w_per + w_opm + w_frgn
     if abs(total_w - 1.0) > 0.01:
         st.warning(f"가중치 합계: {total_w:.2f} (1.0 권장)")
@@ -813,7 +814,7 @@ with st.sidebar:
     }
 
     st.divider()
-    required_return = st.slider("요구수익률 (적정주가 계산, %)", 5, 20, 10) / 100
+    required_return = st.number_input("요구수익률 (적정주가 계산, %)", min_value=5, max_value=20, value=10, step=1) / 100
     st.caption(f"데이터: 네이버 금융 + yfinance | 기준: {datetime.today().strftime('%Y-%m-%d')}")
 
     scan_btn = st.button("🚀 종목 스캔 시작", type="primary", use_container_width=True)
@@ -985,10 +986,57 @@ with tab_scan:
         # 등급 분류
         scored["등급"] = scored.apply(classify_grade, axis=1)
 
+        _scan_ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        _scan_meta = {
+            "scan_time": _scan_ts,
+            "raw_count": len(raw_df),
+            "pass_count": len(scored),
+            "deep_enabled": deep_enabled,
+            "weights": {
+                "저PBR": f"{w_pbr*100:.0f}%", "고ROE": f"{w_roe*100:.0f}%",
+                "고배당": f"{w_div*100:.0f}%", "저PER": f"{w_per*100:.0f}%",
+                "고OPM": f"{w_opm*100:.0f}%", "외국인": f"{w_frgn*100:.0f}%",
+            },
+        }
         st.session_state["scored_df"]    = scored
-        st.session_state["scan_time"]    = datetime.now().strftime("%Y-%m-%d %H:%M")
+        st.session_state["scan_time"]    = _scan_ts
         st.session_state["raw_count"]    = len(raw_df)
         st.session_state["deep_enabled"] = deep_enabled
+        st.session_state["scan_meta"]    = _scan_meta
+
+        # ── 스캔 히스토리에 저장 ──────────────────────────
+        if "scan_history" not in st.session_state:
+            st.session_state["scan_history"] = []
+        st.session_state["scan_history"].append({
+            "meta": _scan_meta,
+            "scored_df": scored.copy(),
+        })
+        # 최근 10건만 유지 (메모리 보호)
+        if len(st.session_state["scan_history"]) > 10:
+            st.session_state["scan_history"] = st.session_state["scan_history"][-10:]
+
+    # ── 이전 스캔 기록 불러오기 ─────────────────────────────
+    if "scan_history" in st.session_state and len(st.session_state["scan_history"]) > 0:
+        _hist = st.session_state["scan_history"]
+        _hist_labels = [
+            f"{h['meta']['scan_time']} | {h['meta']['pass_count']}종목 | "
+            + " ".join(f"{k}{v}" for k, v in h["meta"]["weights"].items())
+            for h in _hist
+        ]
+        with st.expander(f"📂 이전 스캔 기록 ({len(_hist)}건)", expanded=False):
+            _sel_idx = st.selectbox(
+                "불러올 기록 선택", range(len(_hist_labels)),
+                format_func=lambda i: _hist_labels[i],
+                index=len(_hist_labels) - 1,
+            )
+            if st.button("📥 선택한 기록 불러오기"):
+                _sel = _hist[_sel_idx]
+                st.session_state["scored_df"]    = _sel["scored_df"]
+                st.session_state["scan_time"]    = _sel["meta"]["scan_time"]
+                st.session_state["raw_count"]    = _sel["meta"]["raw_count"]
+                st.session_state["deep_enabled"] = _sel["meta"]["deep_enabled"]
+                st.session_state["scan_meta"]    = _sel["meta"]
+                st.rerun()
 
     # ── 결과 표시 (세션 있으면 항상 표시) ────────────────────
     if "scored_df" in st.session_state:
@@ -997,10 +1045,21 @@ with tab_scan:
         raw_count = st.session_state.get("raw_count", 0)
         was_deep  = st.session_state.get("deep_enabled", False)
 
-        st.caption(
-            f"마지막 스캔: **{scan_time}** | 전체 수집: {raw_count:,}개 | "
-            f"심층 분석: {'✅' if was_deep else '⬜ (비활성)'}"
-        )
+        # 스캔 메타 정보 (날짜/시간 + 팩터 가중치)
+        _meta = st.session_state.get("scan_meta")
+        if _meta:
+            _w_str = " · ".join(f"{k} {v}" for k, v in _meta["weights"].items())
+            st.info(
+                f"📌 **스캔 시각**: {_meta['scan_time']} | "
+                f"**수집**: {_meta['raw_count']:,}개 → **통과**: {_meta['pass_count']}개 | "
+                f"심층: {'✅' if _meta['deep_enabled'] else '⬜'}\n\n"
+                f"**팩터 가중치**: {_w_str}"
+            )
+        else:
+            st.caption(
+                f"마지막 스캔: **{scan_time}** | 전체 수집: {raw_count:,}개 | "
+                f"심층 분석: {'✅' if was_deep else '⬜ (비활성)'}"
+            )
 
         top = scored.head(1).iloc[0]
         c1, c2, c3, c4 = st.columns(4)
